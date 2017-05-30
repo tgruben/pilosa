@@ -35,8 +35,6 @@ import (
 	"time"
 	"unsafe"
 
-	"math"
-
 	"github.com/gogo/protobuf/proto"
 	"github.com/pilosa/pilosa/internal"
 	"github.com/pilosa/pilosa/roaring"
@@ -82,9 +80,9 @@ type Fragment struct {
 	opN         int // number of ops since snapshot
 
 	// Cache for row counts.
-	cacheType string // passed in by frame
+	CacheType string // passed in by frame
 	cache     Cache
-	cacheSize uint32
+	CacheSize uint32
 
 	// Cache containing full rows (not just counts).
 	rowCache BitmapCache
@@ -115,8 +113,8 @@ func NewFragment(path, index, frame, view string, slice uint64) *Fragment {
 		frame:     frame,
 		view:      view,
 		slice:     slice,
-		cacheType: DefaultCacheType,
-		cacheSize: DefaultCacheSize,
+		CacheType: DefaultCacheType,
+		CacheSize: DefaultCacheSize,
 
 		LogOutput: ioutil.Discard,
 		MaxOpN:    DefaultFragmentMaxOpN,
@@ -236,11 +234,11 @@ func (f *Fragment) openStorage() error {
 // openCache initializes the cache from row ids persisted to disk.
 func (f *Fragment) openCache() error {
 	// Determine cache type from frame name.
-	switch f.cacheType {
+	switch f.CacheType {
 	case CacheTypeRanked:
-		f.cache = NewRankCache(f.cacheSize)
+		f.cache = NewRankCache(f.CacheSize)
 	case CacheTypeLRU:
-		f.cache = NewLRUCache(f.cacheSize)
+		f.cache = NewLRUCache(f.CacheSize)
 	default:
 		return ErrInvalidCacheType
 	}
@@ -493,7 +491,6 @@ func (f *Fragment) ForEachBit(fn func(rowID, columnID uint64) error) error {
 func (f *Fragment) Top(opt TopOptions) ([]Pair, error) {
 	// Retrieve pairs. If no row ids specified then return from cache.
 	pairs := f.topBitmapPairs(opt.RowIDs)
-
 	// If row ids are provided, we don't want to truncate the result set
 	if len(opt.RowIDs) > 0 {
 		opt.N = 0
@@ -508,17 +505,6 @@ func (f *Fragment) Top(opt TopOptions) ([]Pair, error) {
 		}
 	}
 
-	// Use `tanimotoThreshold > 0` to indicate whether or not we are considering Tanimoto.
-	var tanimotoThreshold uint64
-	var minTanimoto, maxTanimoto float64
-	var srcCount uint64
-	if opt.TanimotoThreshold > 0 && opt.Src != nil {
-		tanimotoThreshold = opt.TanimotoThreshold
-		srcCount = opt.Src.Count()
-		minTanimoto = float64(srcCount*tanimotoThreshold) / 100
-		maxTanimoto = float64(srcCount*100) / float64(tanimotoThreshold)
-	}
-
 	// Iterate over rankings and add to results until we have enough.
 	results := &PairHeap{}
 	for _, pair := range pairs {
@@ -529,17 +515,9 @@ func (f *Fragment) Top(opt TopOptions) ([]Pair, error) {
 			continue
 		}
 
-		// Check against either Tanimoto threshold or minimum threshold.
-		if tanimotoThreshold > 0 {
-			// Ignore counts outside of the Tanimoto min/max values.
-			if float64(cnt) <= minTanimoto || float64(cnt) >= maxTanimoto {
-				continue
-			}
-		} else {
-			// Ignore counts less than MinThreshold.
-			if cnt < opt.MinThreshold {
-				continue
-			}
+		// Ignore counts less than MinThreshold.
+		if cnt < opt.MinThreshold {
+			continue
 		}
 
 		// Apply filter, if set.
@@ -567,16 +545,8 @@ func (f *Fragment) Top(opt TopOptions) ([]Pair, error) {
 				continue
 			}
 
-			// Check against either Tanimoto threshold or minimum threshold.
-			if tanimotoThreshold > 0 {
-				tanimoto := math.Ceil(float64(count*100) / float64(cnt+srcCount-count))
-				if tanimoto <= float64(tanimotoThreshold) {
-					continue
-				}
-			} else {
-				if count < opt.MinThreshold {
-					continue
-				}
+			if count < opt.MinThreshold {
+				continue
 			}
 
 			heap.Push(results, Pair{ID: rowID, Count: count})

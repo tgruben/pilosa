@@ -49,6 +49,9 @@ type Executor struct {
 
 	// Client used for remote HTTP requests.
 	HTTPClient *http.Client
+
+	// Maximum number of SetBit() or ClearBit() commands per request.
+	MaxWritesPerRequest int
 }
 
 // NewExecutor returns a new instance of Executor.
@@ -64,6 +67,11 @@ func (e *Executor) Execute(ctx context.Context, index string, q *pql.Query, slic
 	// Verify that an index is set.
 	if index == "" {
 		return nil, ErrIndexRequired
+	}
+
+	// Verify that the number of writes do not exceed the maximum.
+	if e.MaxWritesPerRequest > 0 && q.WriteCallN() > e.MaxWritesPerRequest {
+		return nil, ErrTooManyWrites
 	}
 
 	// Default options.
@@ -448,7 +456,6 @@ func (e *Executor) executeTopNSlice(ctx context.Context, index string, c *pql.Ca
 		return nil, fmt.Errorf("executeTopNSlice: %v", err)
 	}
 	filters, _ := c.Args["filters"].([]interface{})
-	tanimotoThreshold, _, err := c.UintArg("tanimotoThreshold")
 	if err != nil {
 		return nil, fmt.Errorf("executeTopNSlice: %v", err)
 	}
@@ -479,17 +486,13 @@ func (e *Executor) executeTopNSlice(ctx context.Context, index string, c *pql.Ca
 		minThreshold = MinThreshold
 	}
 
-	if tanimotoThreshold > 100 {
-		return nil, errors.New("Tanimoto Threshold is from 1 to 100 only")
-	}
 	return f.Top(TopOptions{
-		N:                 int(n),
-		Src:               src,
-		RowIDs:            rowIDs,
-		FilterField:       field,
-		FilterValues:      filters,
-		MinThreshold:      minThreshold,
-		TanimotoThreshold: tanimotoThreshold,
+		N:            int(n),
+		Src:          src,
+		RowIDs:       rowIDs,
+		FilterField:  field,
+		FilterValues: filters,
+		MinThreshold: minThreshold,
 	})
 }
 
@@ -592,17 +595,41 @@ func (e *Executor) executeRangeSlice(ctx context.Context, index string, c *pql.C
 		frame = DefaultFrame
 	}
 
+	// Retrieve column label.
+	idx := e.Holder.Index(index)
+	if idx == nil {
+		return nil, ErrIndexNotFound
+	}
+	columnLabel := idx.ColumnLabel()
+
 	// Retrieve base frame.
-	f := e.Holder.Frame(index, frame)
+	f := idx.Frame(frame)
 	if f == nil {
 		return nil, ErrFrameNotFound
 	}
 	rowLabel := f.RowLabel()
 
-	// Read row id.
-	rowID, _, err := c.UintArg(rowLabel) // TODO: why are we ignoring missing rowID?
+	// Read row & column id.
+	columnID, columnOK, err := c.UintArg(columnLabel)
+	if err != nil {
+		return nil, fmt.Errorf("executeRangeSlice - reading column: %v", err)
+	}
+	rowID, rowOK, err := c.UintArg(rowLabel)
 	if err != nil {
 		return nil, fmt.Errorf("executeRangeSlice - reading row: %v", err)
+	}
+
+	// Determine view.
+	var id uint64
+	var viewName string
+	if columnOK && rowOK {
+		return nil, fmt.Errorf("Range() cannot contain both %q and %q", columnLabel, rowLabel)
+	} else if !columnOK && !rowOK {
+		return nil, fmt.Errorf("Range() must specify either %q or %q", columnLabel, rowLabel)
+	} else if columnOK {
+		viewName, id = ViewInverse, columnID
+	} else {
+		viewName, id = ViewStandard, rowID
 	}
 
 	// Parse start time.
@@ -633,12 +660,12 @@ func (e *Executor) executeRangeSlice(ctx context.Context, index string, c *pql.C
 
 	// Union bitmaps across all time-based subframes.
 	bm := &Bitmap{}
-	for _, view := range ViewsByTimeRange(ViewStandard, startTime, endTime, q) {
+	for _, view := range ViewsByTimeRange(viewName, startTime, endTime, q) {
 		f := e.Holder.Fragment(index, frame, view, slice)
 		if f == nil {
 			continue
 		}
-		bm = bm.Union(f.Row(rowID))
+		bm = bm.Union(f.Row(id))
 	}
 	return bm, nil
 }
@@ -1137,7 +1164,7 @@ func (e *Executor) exec(ctx context.Context, node *Node, index string, q *pql.Qu
 
 	// Check status code.
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("invalid status: code=%d, err=%s", resp.StatusCode, body)
+		return nil, fmt.Errorf("invalid status Executor.exec: code=%d, err=%s, req: %v", resp.StatusCode, body, req)
 	}
 
 	// Decode response object.
