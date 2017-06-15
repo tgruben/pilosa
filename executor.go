@@ -373,7 +373,7 @@ func (e *Executor) ExecuteCallSlice(ctx context.Context, idx string, c *pql.Call
 
 // newPlugin instantiates a plugin from an external call.
 func (e *Executor) newPlugin(c *pql.Call) (Plugin, error) {
-	p, err := NewPlugin(c.Name, e)
+	p, err := NewPlugin(c, e)
 	if err != nil {
 		return nil, err
 	}
@@ -1443,4 +1443,12 @@ func needsSlices(calls []*pql.Call) bool {
 		}
 	}
 	return false
+}
+
+type PQLCallInfo struct {
+	Name        string
+	PosArgType  string
+	KwArgTypes  map[string]string
+	ReturnType  string
+	NeedsSlices bool
 }

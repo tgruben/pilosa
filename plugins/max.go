@@ -8,8 +8,14 @@ import (
 )
 
 func init() {
-	pilosa.RegisterPlugin("MaxIndex", NewMaxIndexPlugin)
-	pilosa.RegisterPlugin("MinIndex", NewMinIndexPlugin)
+	maxIndexCallInfo := &pilosa.PQLCallInfo{
+		Name: "MaxIndex",
+	}
+	minIndexCallInfo := &pilosa.PQLCallInfo{
+		Name: "MinIndex",
+	}
+	pilosa.RegisterPlugin(maxIndexCallInfo, NewMaxIndexPlugin)
+	pilosa.RegisterPlugin(minIndexCallInfo, NewMinIndexPlugin)
 }
 
 // MaxIndexPlugin represents a plugin that give a set of all the bits in the top-n

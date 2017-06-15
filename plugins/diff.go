@@ -9,7 +9,10 @@ import (
 )
 
 func init() {
-	pilosa.RegisterPlugin("DiffTop", NewDiffTopPlugin)
+	callInfo := &pilosa.PQLCallInfo{
+		Name: "DiffTop",
+	}
+	pilosa.RegisterPlugin(callInfo, NewDiffTopPlugin)
 }
 
 // DiffTopPlugin represents a plugin that will find the common bits of the top-n list.

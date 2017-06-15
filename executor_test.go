@@ -543,7 +543,12 @@ func TestExecutor_Execute_ExternalCall(t *testing.T) {
 		},
 	}
 
-	pilosa.RegisterPlugin("test1", pilosa.NewPluginConstructor(p.NewMockPluginConstruct))
+	//	type NewPluginConstructor func(*Holder) Plugin
+
+	callInfo := &pilosa.PQLCallInfo{
+		Name: "test1",
+	}
+	pilosa.RegisterPlugin(callInfo, pilosa.NewPluginConstructor(p.NewMockPluginConstruct))
 
 	// Execute function with plugin call.
 	// The result should include the total bit count plus 10 for each slice

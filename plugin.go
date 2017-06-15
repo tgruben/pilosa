@@ -14,17 +14,22 @@ type Plugin interface {
 	Reduce(ctx context.Context, prev, v interface{}) interface{}
 }
 
+type PluginRegistryEntry struct {
+	constructor NewPluginConstructor
+	callInfo    *PQLCallInfo
+}
+
 // PluginRegistry holds a lookup of plugin constructors.
 type pluginRegistry struct {
-	mutex *sync.RWMutex
-	fns   map[string]NewPluginConstructor
+	mutex   *sync.RWMutex
+	entries map[string]*PluginRegistryEntry
 }
 
 // newPluginRegistry returns a new instance of PluginRegistry.
 func newPluginRegistry() *pluginRegistry {
 	return &pluginRegistry{
-		mutex: &sync.RWMutex{},
-		fns:   make(map[string]NewPluginConstructor),
+		mutex:   &sync.RWMutex{},
+		entries: make(map[string]*PluginRegistryEntry),
 	}
 }
 
@@ -34,34 +39,37 @@ var (
 
 // RegisterPlugin registers a plugin constructor with the registry.
 // Returns an error if the plugin is already registered.
-func RegisterPlugin(name string, fn NewPluginConstructor) error {
-	return pr.register(name, fn)
+func RegisterPlugin(callInfo *PQLCallInfo, fn NewPluginConstructor) error {
+	return pr.register(callInfo, fn)
 }
 
-func (r *pluginRegistry) register(name string, fn NewPluginConstructor) error {
+func (r *pluginRegistry) register(callInfo *PQLCallInfo, fn NewPluginConstructor) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	if r.fns[name] != nil {
+	if r.entries[callInfo.Name] != nil {
 		return errors.New("plugin already registered")
 	}
-	r.fns[name] = fn
+	entry := &PluginRegistryEntry{
+		constructor: fn,
+		callInfo:    callInfo,
+	}
+	r.entries[callInfo.Name] = entry
 	return nil
 }
 
 // NewPlugin instantiates an already loaded plugin.
-func NewPlugin(name string, e *Executor) (Plugin, error) {
-	return pr.newPlugin(name, e)
+func NewPlugin(call *pql.Call, e *Executor) (Plugin, error) {
+	return pr.newPlugin(call, e)
 }
 
-func (r *pluginRegistry) newPlugin(name string, e *Executor) (Plugin, error) {
+func (r *pluginRegistry) newPlugin(call *pql.Call, e *Executor) (Plugin, error) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
-	fn := r.fns[name]
-	if fn == nil {
-		return nil, errors.New("plugin not found")
+	if entry, ok := r.entries[call.Name]; ok {
+		return entry.constructor(e), nil
 	}
 
-	return fn(e), nil
+	return nil, errors.New("plugin not found")
 }

@@ -11,7 +11,10 @@ import (
 )
 
 func init() {
-	pilosa.RegisterPlugin("Debug", NewDebugPlugin)
+	callInfo := &pilosa.PQLCallInfo{
+		Name: "Debug",
+	}
+	pilosa.RegisterPlugin(callInfo, NewDebugPlugin)
 }
 
 // DebugPlugin represents a plugin that will print args to stderr.

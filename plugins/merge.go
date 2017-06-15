@@ -9,7 +9,10 @@ import (
 )
 
 func init() {
-	pilosa.RegisterPlugin("MergeTop", NewMergeTopPlugin)
+	callInfo := &pilosa.PQLCallInfo{
+		Name: "MergeTop",
+	}
+	pilosa.RegisterPlugin(callInfo, NewMergeTopPlugin)
 }
 
 // MergeTopPlugin represents a plugin that produces a union of the top-n bitmaps.

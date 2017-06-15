@@ -8,7 +8,10 @@ import (
 )
 
 func init() {
-	pilosa.RegisterPlugin("Mask", NewMaskPlugin)
+	callInfo := &pilosa.PQLCallInfo{
+		Name: "Mask",
+	}
+	pilosa.RegisterPlugin(callInfo, NewMaskPlugin)
 }
 
 // MaskPlugin represents a plugin that will print args to stderr.
