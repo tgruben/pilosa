@@ -50,7 +50,7 @@ type Frame struct {
 	timeQuantum TimeQuantum
 	schema      *FrameSchema
 
-	views map[string]*View
+	views map[string]View
 
 	// Row attribute storage and cache
 	rowAttrStore *AttrStore
@@ -83,7 +83,7 @@ func NewFrame(path, index, name string) (*Frame, error) {
 		name:   name,
 		schema: &FrameSchema{},
 
-		views:        make(map[string]*View),
+		views:        make(map[string]View),
 		rowAttrStore: NewAttrStore(filepath.Join(path, ".data")),
 
 		broadcaster: NopBroadcaster,
@@ -118,7 +118,7 @@ func (f *Frame) MaxSlice() uint64 {
 
 	var max uint64
 	for _, view := range f.views {
-		if view.name == ViewInverse {
+		if view.Name() == ViewInverse {
 			continue
 		} else if viewMaxSlice := view.MaxSlice(); viewMaxSlice > max {
 			max = viewMaxSlice
@@ -290,7 +290,7 @@ func (f *Frame) openViews() error {
 		if err := view.Open(); err != nil {
 			return fmt.Errorf("open view: view=%s, err=%s", view.Name(), err)
 		}
-		view.RowAttrStore = f.rowAttrStore
+		view.SetRowAttrStore(f.rowAttrStore)
 		f.views[view.Name()] = view
 	}
 
@@ -397,7 +397,7 @@ func (f *Frame) Close() error {
 			return err
 		}
 	}
-	f.views = make(map[string]*View)
+	f.views = make(map[string]View)
 
 	return nil
 }
@@ -505,20 +505,20 @@ func (f *Frame) ViewPath(name string) string {
 }
 
 // View returns a view in the frame by name.
-func (f *Frame) View(name string) *View {
+func (f *Frame) View(name string) View {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	return f.view(name)
 }
 
-func (f *Frame) view(name string) *View { return f.views[name] }
+func (f *Frame) view(name string) View { return f.views[name] }
 
 // Views returns a list of all views in the frame.
-func (f *Frame) Views() []*View {
+func (f *Frame) Views() []View {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	other := make([]*View, 0, len(f.views))
+	other := make([]View, 0, len(f.views))
 	for _, view := range f.views {
 		other = append(other, view)
 	}
@@ -526,7 +526,7 @@ func (f *Frame) Views() []*View {
 }
 
 // CreateViewIfNotExists returns the named view, creating it if necessary.
-func (f *Frame) CreateViewIfNotExists(name string) (*View, error) {
+func (f *Frame) CreateViewIfNotExists(name string) (View, error) {
 	// Don't create inverse views if they are not enabled.
 	if !f.InverseEnabled() && IsInverseView(name) {
 		return nil, ErrFrameInverseDisabled
@@ -543,19 +543,19 @@ func (f *Frame) CreateViewIfNotExists(name string) (*View, error) {
 	if err := view.Open(); err != nil {
 		return nil, err
 	}
-	view.RowAttrStore = f.rowAttrStore
+	view.SetRowAttrStore(f.rowAttrStore)
 	f.views[view.Name()] = view
 
 	return view, nil
 }
 
-func (f *Frame) newView(path, name string) *View {
+func (f *Frame) newView(path, name string) View {
 	view := NewView(path, f.index, f.name, name, f.cacheSize)
-	view.cacheType = f.cacheType
-	view.LogOutput = f.LogOutput
-	view.RowAttrStore = f.rowAttrStore
-	view.stats = f.Stats.WithTags(fmt.Sprintf("view:%s", name))
-	view.broadcaster = f.broadcaster
+	view.SetCacheType(f.cacheType)
+	view.SetLogOutput(f.LogOutput)
+	view.SetStats(f.Stats.WithTags(fmt.Sprintf("view:%s", name)))
+	view.SetBroadcaster(f.broadcaster)
+	view.SetRowAttrStore(f.rowAttrStore)
 	return view
 }
 

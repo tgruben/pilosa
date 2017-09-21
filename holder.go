@@ -308,7 +308,7 @@ func (h *Holder) Frame(index, name string) *Frame {
 }
 
 // View returns the view for an index, frame, and name.
-func (h *Holder) View(index, frame, name string) *View {
+func (h *Holder) View(index, frame, name string) View {
 	f := h.Frame(index, frame)
 	if f == nil {
 		return nil
