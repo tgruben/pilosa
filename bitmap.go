@@ -40,6 +40,16 @@ func NewBitmap(bits ...uint64) *Bitmap {
 	}
 	return bm
 }
+func (b *Bitmap) CopyFrom(other *Bitmap) {
+	var segments []BitmapSegment
+
+	for _, s := range other.segments {
+		segments = append(segments, s)
+	}
+
+	b.segments = segments
+	b.InvalidateCount()
+}
 
 // Merge merges data from other into b.
 func (b *Bitmap) Merge(other *Bitmap) {

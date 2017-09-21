@@ -613,3 +613,21 @@ func (s *HolderSyncer) syncFragment(index, frame, view string, slice uint64) err
 
 	return nil
 }
+
+func (h *Holder) Store(index string, slice, id uint64, bitmap *Bitmap) error {
+	idx := h.Index(index)
+
+	return idx.Store(slice, id, bitmap)
+}
+
+func (h *Holder) Load(index string, slice, id uint64) (*Bitmap, bool) {
+	idx := h.Index(index)
+
+	return idx.Load(slice, id)
+}
+
+func (h *Holder) Purge(index string, slice, id uint64) {
+	idx := h.Index(index)
+
+	idx.Purge(slice, id)
+}

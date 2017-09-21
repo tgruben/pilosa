@@ -65,6 +65,7 @@ type Index struct {
 	Stats       StatsClient
 
 	LogOutput io.Writer
+	registers map[string]*Bitmap
 }
 
 // NewIndex returns a new instance of Index.
@@ -90,6 +91,7 @@ func NewIndex(path, name string) (*Index, error) {
 		broadcaster: NopBroadcaster,
 		Stats:       NopStatsClient,
 		LogOutput:   ioutil.Discard,
+		registers:   make(map[string]*Bitmap),
 	}, nil
 }
 
@@ -795,4 +797,29 @@ func (i *Index) InputBits(frame string, bits []*Bit) error {
 	}
 
 	return f.Import(rowIDs, columnIDs, timestamps)
+}
+
+func (i *Index) Store(slice, id uint64, bitmap *Bitmap) error {
+	key := fmt.Sprintf("%d:%d", slice, id)
+	i.mu.Lock()
+	i.registers[key] = bitmap
+	i.mu.Unlock()
+	return nil
+
+}
+
+func (i *Index) Load(slice, id uint64) (*Bitmap, bool) {
+	key := fmt.Sprintf("%d:%d", slice, id)
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	bm, found := i.registers[key]
+	return bm, found
+}
+
+func (i *Index) Purge(slice, id uint64) {
+	key := fmt.Sprintf("%d:%d", slice, id)
+	i.mu.Lock()
+	delete(i.registers, key)
+	i.mu.Unlock()
 }

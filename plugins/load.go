@@ -2,6 +2,7 @@ package plugins
 
 import (
 	"context"
+	"errors"
 
 	"github.com/pilosa/pilosa"
 	"github.com/pilosa/pilosa/pql"
@@ -23,29 +24,16 @@ func NewLoadPlugin(e *pilosa.Executor) pilosa.Plugin {
 
 // Map executes the plugin against a single slice.
 func (p *LoadPlugin) Map(ctx context.Context, index string, call *pql.Call, slice uint64) (interface{}, error) {
-	/*
-		var frame string
 
-		args := call.Args
-			if id, found := args["id"]; found {
-				n = int(id.(int64))
-			} else {
-				return nil, errors.New("n required")
-			}
-
-		if fr, found := args["frame"]; found {
-			frame = fr.(string)
-		} else {
-			return nil, errors.New("frame required")
-		}
-		/*
-			view := p.holder.View(index, frame, pilosa.ViewStandard)
-			f := view.Fragment(slice)
-
-			var bm *pilosa.Bitmap
-			//bm,err:=f.Load(id)
-	*/
-	return "", nil
+	args := call.Args
+	id := uint64(0)
+	if ids, found := args["id"]; found {
+		id = uint64(ids.(int64))
+	} else {
+		return nil, errors.New("id required")
+	}
+	bm, _ := p.holder.Load(index, slice, id)
+	return bm, nil
 }
 
 // Reduce combines previous map results into a single value.

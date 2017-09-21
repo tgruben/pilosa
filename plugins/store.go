@@ -14,12 +14,12 @@ func init() {
 
 // LoadPlugin represents a plugin that will read bitmaps from a register
 type StorePlugin struct {
-	holder *pilosa.Holder
+	executor *pilosa.Executor
 }
 
-// NewDiffTopPlugin returns a new instance of DiffTopPlugin.
+// NewStorePlugin returns a new instance of StorePlugin.
 func NewStorePlugin(e *pilosa.Executor) pilosa.Plugin {
-	return &StorePlugin{e.Holder}
+	return &StorePlugin{e}
 }
 
 // Map executes the plugin against a single slice.
@@ -27,38 +27,27 @@ func (p *StorePlugin) Map(ctx context.Context, index string, call *pql.Call, sli
 	//var frame string
 
 	args := call.Args
-
-	if id, found := args["id"]; found {
-		id = int(id.(int64))
+	id := uint64(0)
+	if idi, found := args["id"]; found {
+		id = uint64(idi.(int64))
 	} else {
-		return nil, errors.New("n required")
+		return nil, errors.New("id required")
 	}
-	/*
-		view := p.holder.View(index, frame, pilosa.ViewRegister)
-		f := view.Fragment(slice)
+	bm := pilosa.NewBitmap()
+	child, _ := p.executor.ExecuteCallSlice(ctx, index, call.Children[0], slice, p)
+	switch v := child.(type) {
+	case *pilosa.Bitmap: //handle bitmaps
 
-		//GetOrCreateRegisterFrame
-		// call to build bitmap from children1 ..
-		//Store the results
-		var bm *pilosa.Bitmap
-		//bm,err:=f.Store(id,bm)
-	*/
-	return "STORE", nil
+		bm.CopyFrom(v)
+		p.executor.Holder.Store(index, slice, id, bm)
+		return "OK", nil
+	}
+	return nil, errors.New("Invalid Bitmap Argument")
+
 }
 
 // Reduce combines previous map results into a single value.
 func (p *StorePlugin) Reduce(ctx context.Context, prev, v interface{}) interface{} {
-
-	switch x := v.(type) {
-	case *pilosa.Bitmap:
-		if prev != nil {
-			bm := prev.(*pilosa.Bitmap)
-			return bm.Union(x)
-		}
-		return x
-	case int:
-		return x
-	}
 
 	return v
 }
