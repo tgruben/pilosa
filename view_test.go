@@ -24,7 +24,7 @@ import (
 
 // View is a test wrapper for pilosa.View.
 type View struct {
-	*pilosa.View
+	pilosa.View
 	RowAttrStore *test.AttrStore
 }
 
@@ -40,7 +40,7 @@ func NewView(index, frame, name string) *View {
 		View:         pilosa.NewView(file.Name(), index, frame, name, pilosa.DefaultCacheSize),
 		RowAttrStore: test.MustOpenAttrStore(),
 	}
-	v.View.RowAttrStore = v.RowAttrStore.AttrStore
+	v.View.SetRowAttrStore(v.RowAttrStore.AttrStore)
 	return v
 }
 
@@ -68,7 +68,7 @@ func (v *View) Reopen() error {
 	}
 
 	v.View = pilosa.NewView(path, v.Index(), v.Frame(), v.Name(), pilosa.DefaultCacheSize)
-	v.View.RowAttrStore = v.RowAttrStore.AttrStore
+	v.View.SetRowAttrStore(v.RowAttrStore.AttrStore)
 	if err := v.Open(); err != nil {
 		return err
 	}

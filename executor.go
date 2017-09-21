@@ -178,11 +178,12 @@ func (e *Executor) executeCall(ctx context.Context, index string, c *pql.Call, s
 	case "SetColumnAttrs":
 		return nil, e.executeSetColumnAttrs(ctx, index, c, opt)
 	case "TopN":
+		e.Holder.Stats.CountWithCustomTags(c.Name, 1, 1.0, []string{indexTag})
 		return e.executeTopN(ctx, index, c, slices, opt)
-	case "Bitmap", "Difference", "Intersect", "Range", "Union":
+	case "Bitmap", "Difference", "Intersect", "Range", "Union", "Xor":
+		e.Holder.Stats.CountWithCustomTags(c.Name, 1, 1.0, []string{indexTag})
 		return e.executeBitmapCall(ctx, index, c, slices, opt)
 	default:
-		e.Holder.Stats.CountWithCustomTags(c.Name, 1, 1.0, []string{indexTag})
 		return e.executeExternalCall(ctx, index, c, slices, opt)
 	}
 }
