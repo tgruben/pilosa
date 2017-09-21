@@ -814,12 +814,17 @@ func (i *Index) Load(slice, id uint64) (*Bitmap, bool) {
 	defer i.mu.Unlock()
 
 	bm, found := i.registers[key]
-	return bm, found
+	if found {
+		return bm, found
+	}
+
+	return NewBitmap(), found
 }
 
 func (i *Index) Purge(slice, id uint64) {
 	key := fmt.Sprintf("%d:%d", slice, id)
 	i.mu.Lock()
 	delete(i.registers, key)
+	i.mu.Unlock()
 	i.mu.Unlock()
 }
