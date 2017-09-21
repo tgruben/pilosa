@@ -142,6 +142,12 @@ func (s *Server) Open() error {
 	if err := s.Cluster.NodeSet.Open(); err != nil {
 		return fmt.Errorf("opening NodeSet: %v", err)
 	}
+	/*
+		// Load plugins.
+		if err := s.loadPlugins(); err != nil {
+			return err
+		}
+	*/
 
 	// Create executor for executing queries.
 	e := NewExecutor()

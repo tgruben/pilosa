@@ -825,6 +825,45 @@ func TestExecutor_Execute_FieldRange(t *testing.T) {
 	})
 }
 
+// Ensure an external plugin call can be executed.
+func TestExecutor_Execute_ExternalCall(t *testing.T) {
+	hldr := MustOpenHolder()
+	defer hldr.Close()
+
+	hldr.MustCreateFragmentIfNotExists("i", "f", pilosa.ViewStandard, 0).SetBit(10, 3)
+	hldr.MustCreateFragmentIfNotExists("i", "f", pilosa.ViewStandard, 1).SetBit(10, SliceWidth+1)
+
+	// Initialize executor with two plugins.
+	e := NewExecutor(hldr.Holder, NewCluster(1))
+	p := MockPluginConstructorWrapper{
+		mock: &MockPlugin{
+			MapFn: func(ctx context.Context, index string, call *pql.Call, slice uint64) (interface{}, error) {
+				child0, err := e.ExecuteCallSlice(ctx, index, call.Children[0], slice, nil)
+				if err != nil {
+					return nil, err
+				}
+				bm := child0.(*pilosa.Bitmap)
+				return uint64(bm.Count() + 10), nil
+			},
+			ReduceFn: func(ctx context.Context, prev, v interface{}) interface{} {
+				u64, _ := prev.(uint64)
+				return u64 + v.(uint64)
+			},
+		},
+	}
+
+	pilosa.RegisterPlugin("test1", pilosa.NewPluginConstructor(p.NewMockPluginConstruct))
+
+	// Execute function with plugin call.
+	// The result should include the total bit count plus 10 for each slice
+	// executed during the map phase: 1 + 10 + 1 + 10 = 22
+	if res, err := e.Execute(context.Background(), "i", MustParse(`test1(Bitmap(rowID=10, frame=f))`), nil, nil); err != nil {
+		t.Fatal(err)
+	} else if res[0] != uint64(22) {
+		t.Fatalf("unexpected result: %v", res)
+	}
+}
+
 // Ensure a remote query can return a bitmap.
 func TestExecutor_Execute_Remote_Bitmap(t *testing.T) {
 	c := test.NewCluster(2)
