@@ -53,7 +53,7 @@ on the configured port.`,
 				return err
 			}
 			logger := log.New(logOutput, "", log.LstdFlags)
-			logger.Printf("Pilosa %s, build time %s\n", pilosa.Version, pilosa.BuildTime)
+			logger.Printf("Pilosa %s, build time %s SliceWidth:%d\n", pilosa.Version, pilosa.BuildTime, pilosa.SliceWidth)
 
 			// Start CPU profiling.
 			if Server.CPUProfile != "" {
