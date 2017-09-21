@@ -826,5 +826,4 @@ func (i *Index) Purge(slice, id uint64) {
 	i.mu.Lock()
 	delete(i.registers, key)
 	i.mu.Unlock()
-	i.mu.Unlock()
 }
