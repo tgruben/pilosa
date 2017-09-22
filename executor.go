@@ -59,14 +59,13 @@ type Executor struct {
 func NewExecutor() *Executor {
 	var netTransport = &http.Transport{
 		Dial: (&net.Dialer{
-			Timeout: 5 * time.Second,
+			Timeout: 30 * time.Second,
 		}).Dial,
-		TLSHandshakeTimeout: 5 * time.Second,
 		MaxIdleConns:        100,
 		MaxIdleConnsPerHost: 100,
 	}
 	var netClient = &http.Client{
-		Timeout:   time.Second * 10,
+		Timeout:   time.Minute * 10,
 		Transport: netTransport,
 	}
 	return &Executor{
