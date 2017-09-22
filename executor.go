@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -56,8 +57,20 @@ type Executor struct {
 
 // NewExecutor returns a new instance of Executor.
 func NewExecutor() *Executor {
+	var netTransport = &http.Transport{
+		Dial: (&net.Dialer{
+			Timeout: 5 * time.Second,
+		}).Dial,
+		TLSHandshakeTimeout: 5 * time.Second,
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 100,
+	}
+	var netClient = &http.Client{
+		Timeout:   time.Second * 10,
+		Transport: netTransport,
+	}
 	return &Executor{
-		HTTPClient: http.DefaultClient,
+		HTTPClient: netClient,
 	}
 }
 

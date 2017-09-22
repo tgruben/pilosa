@@ -810,8 +810,8 @@ func (i *Index) Store(slice, id uint64, bitmap *Bitmap) error {
 
 func (i *Index) Load(slice, id uint64) (*Bitmap, bool) {
 	key := fmt.Sprintf("%d:%d", slice, id)
-	i.mu.Lock()
-	defer i.mu.Unlock()
+	i.mu.RLock()
+	defer i.mu.RUnlock()
 
 	bm, found := i.registers[key]
 	if found {
