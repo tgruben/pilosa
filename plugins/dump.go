@@ -3,6 +3,7 @@ package plugins
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/pilosa/pilosa"
 	"github.com/pilosa/pilosa/internal"
@@ -37,8 +38,9 @@ func (p *DumpPlugin) Map(ctx context.Context, index string, call *pql.Call, slic
 
 	view := p.holder.View(index, frame, pilosa.ViewStandard)
 	f := view.Fragment(slice)
+	ids := f.AllIds()
 
-	return f.AllIds(), nil
+	return ids, nil
 }
 
 // Reduce combines previous map results into a single value.
@@ -47,14 +49,25 @@ func (p *DumpPlugin) Reduce(ctx context.Context, prev, v interface{}) interface{
 	case []pilosa.Pair:
 		if prev != nil {
 			pairs := prev.([]pilosa.Pair)
-			return pilosa.Pairs(pairs).Add(v.([]pilosa.Pair))
+			return pilosa.Pairs(pairs).Add(x)
 
 		}
 		return x
-	case int:
-		return x
-	}
+	case pilosa.Pairs:
+		if prev != nil {
+			switch p := prev.(type) {
+			case []pilosa.Pair:
+				return pilosa.Pairs(p).Add(x)
 
+			case pilosa.Pairs:
+				return p.Add(x)
+			}
+		}
+		return x
+	default:
+		fmt.Println("WHAT", v)
+
+	}
 	return v
 }
 
