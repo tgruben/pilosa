@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/pilosa/pilosa/internal"
 	"github.com/pilosa/pilosa/pql"
 )
 
@@ -12,6 +13,8 @@ type NewPluginConstructor func(*Executor) Plugin
 type Plugin interface {
 	Map(ctx context.Context, index string, call *pql.Call, slice uint64) (interface{}, error)
 	Reduce(ctx context.Context, prev, v interface{}) interface{}
+	Decode(*internal.QueryResult) (interface{}, error)
+	Final() interface{}
 }
 
 // PluginRegistry holds a lookup of plugin constructors.
@@ -64,4 +67,17 @@ func (r *pluginRegistry) newPlugin(name string, e *Executor) (Plugin, error) {
 	}
 
 	return fn(e), nil
+}
+
+func IsPlugin(name string) bool {
+	return pr.isPlugin(name)
+}
+
+func (r *pluginRegistry) isPlugin(name string) bool {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	_, found := r.fns[name]
+	return found
+
 }

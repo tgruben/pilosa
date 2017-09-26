@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/pilosa/pilosa"
+	"github.com/pilosa/pilosa/internal"
 	"github.com/pilosa/pilosa/pql"
 )
 
@@ -43,6 +44,7 @@ func (p *MergeTopPlugin) Map(ctx context.Context, index string, call *pql.Call, 
 	f := view.Fragment(slice)
 
 	toplist, err := f.Top(pilosa.TopOptions{N: n})
+
 	if err != nil {
 		return nil, err
 	}
@@ -70,4 +72,12 @@ func (p *MergeTopPlugin) Reduce(ctx context.Context, prev, v interface{}) interf
 	}
 
 	return v
+}
+
+func (p *MergeTopPlugin) Decode(qr *internal.QueryResult) (interface{}, error) {
+	return pilosa.DecodeBitmap(qr.GetBitmap()), nil
+}
+
+func (p *MergeTopPlugin) Final() interface{} {
+	return nil
 }

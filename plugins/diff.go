@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/pilosa/pilosa"
+	"github.com/pilosa/pilosa/internal"
 	"github.com/pilosa/pilosa/pql"
 )
 
@@ -76,4 +77,12 @@ func (p *DiffTopPlugin) Reduce(ctx context.Context, prev, v interface{}) interfa
 	}
 
 	return v
+}
+
+func (p *DiffTopPlugin) Decode(qr *internal.QueryResult) (interface{}, error) {
+	return pilosa.DecodeBitmap(qr.GetBitmap()), nil
+}
+
+func (p *DiffTopPlugin) Final() interface{} {
+	return nil
 }

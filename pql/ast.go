@@ -54,6 +54,7 @@ type Call struct {
 	Name     string
 	Args     map[string]interface{}
 	Children []*Call
+	Opt      interface{} //ugly hack for now
 }
 
 // UintArg is for reading the value at key from call.Args as a uint64. If the

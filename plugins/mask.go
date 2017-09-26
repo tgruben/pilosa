@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/pilosa/pilosa"
+	"github.com/pilosa/pilosa/internal"
 	"github.com/pilosa/pilosa/pql"
 )
 
@@ -64,4 +65,12 @@ func (p *MaskPlugin) Reduce(ctx context.Context, prev, v interface{}) interface{
 	}
 
 	return v
+}
+
+func (p *MaskPlugin) Decode(qr *internal.QueryResult) (interface{}, error) {
+	return pilosa.DecodeBitmap(qr.GetBitmap()), nil
+}
+
+func (p *MaskPlugin) Final() interface{} {
+	return nil
 }

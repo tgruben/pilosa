@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/pilosa/pilosa"
+	"github.com/pilosa/pilosa/internal"
 	"github.com/pilosa/pilosa/pql"
 )
 
@@ -27,4 +28,11 @@ func (p *MockPlugin) Map(ctx context.Context, index string, call *pql.Call, slic
 
 func (p *MockPlugin) Reduce(ctx context.Context, prev, v interface{}) interface{} {
 	return p.ReduceFn(ctx, prev, v)
+}
+
+func (p *MockPlugin) Decode(qr *internal.QueryResult) (interface{}, error) {
+	return nil, nil
+}
+func (p *MockPlugin) Final() interface{} {
+	return nil
 }

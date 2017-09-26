@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/pilosa/pilosa"
+	"github.com/pilosa/pilosa/internal"
 	"github.com/pilosa/pilosa/pql"
 )
 
@@ -51,4 +52,12 @@ func (p *LoadPlugin) Reduce(ctx context.Context, prev, v interface{}) interface{
 	}
 
 	return v
+}
+
+func (p *LoadPlugin) Decode(*internal.QueryResult) (interface{}, error) {
+
+	return nil, nil
+}
+func (p *LoadPlugin) Final() interface{} {
+	return nil
 }

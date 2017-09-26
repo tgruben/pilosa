@@ -282,7 +282,7 @@ func (s *AttrStore) BlockData(i uint64) (map[uint64]map[string]interface{}, erro
 		if err := proto.Unmarshal(v, &pb); err != nil {
 			return nil, err
 		}
-		m[btou64(k)] = decodeAttrs(pb.GetAttrs())
+		m[btou64(k)] = DecodeAttrs(pb.GetAttrs())
 	}
 
 	return m, nil
@@ -299,7 +299,7 @@ func txAttrs(tx *bolt.Tx, id uint64) (map[string]interface{}, error) {
 	if err := proto.Unmarshal(v, &pb); err != nil {
 		return nil, err
 	}
-	return decodeAttrs(pb.GetAttrs()), nil
+	return DecodeAttrs(pb.GetAttrs()), nil
 }
 
 // txUpdateAttrs updates the attributes for an id.
@@ -362,7 +362,7 @@ func encodeAttrs(m map[string]interface{}) []*internal.Attr {
 	return a
 }
 
-func decodeAttrs(pb []*internal.Attr) map[string]interface{} {
+func DecodeAttrs(pb []*internal.Attr) map[string]interface{} {
 	m := make(map[string]interface{}, len(pb))
 	for i := range pb {
 		key, value := decodeAttr(pb[i])

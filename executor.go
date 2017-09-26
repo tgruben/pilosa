@@ -196,7 +196,7 @@ func (e *Executor) executeCall(ctx context.Context, index string, c *pql.Call, s
 		e.Holder.Stats.CountWithCustomTags(c.Name, 1, 1.0, []string{indexTag})
 		return e.executeBitmapCall(ctx, index, c, slices, opt)
 	default:
-		return e.executeExternalCall(ctx, index, c, slices, opt)
+		return e.executePluginCall(ctx, index, c, slices, opt)
 	}
 }
 
@@ -258,7 +258,7 @@ func (e *Executor) executeSum(ctx context.Context, index string, c *pql.Call, sl
 func (e *Executor) executeBitmapCall(ctx context.Context, index string, c *pql.Call, slices []uint64, opt *ExecOptions) (*Bitmap, error) {
 	// Execute calls in bulk on each remote node and merge.
 	mapFn := func(slice uint64) (interface{}, error) {
-		return e.executeBitmapCallSlice(ctx, index, c, slice)
+		return e.ExecuteBitmapCallSlice(ctx, index, c, slice)
 	}
 
 	// Merge returned results at coordinating node.
@@ -321,8 +321,8 @@ func (e *Executor) executeBitmapCall(ctx context.Context, index string, c *pql.C
 	return bm, nil
 }
 
-// executeBitmapCallSlice executes a bitmap call for a single slice.
-func (e *Executor) executeBitmapCallSlice(ctx context.Context, index string, c *pql.Call, slice uint64) (*Bitmap, error) {
+// ExecuteBitmapCallSlice executes a bitmap call for a single slice.
+func (e *Executor) ExecuteBitmapCallSlice(ctx context.Context, index string, c *pql.Call, slice uint64) (*Bitmap, error) {
 	switch c.Name {
 	case "Bitmap":
 		return e.executeBitmapSlice(ctx, index, c, slice)
@@ -337,28 +337,27 @@ func (e *Executor) executeBitmapCallSlice(ctx context.Context, index string, c *
 	case "Xor":
 		return e.executeXorSlice(ctx, index, c, slice)
 	default:
-		//return nil, fmt.Errorf("unknown call: %s", c.Name)
-		p, err := e.newPlugin(c)
-		if err != nil {
-			return nil, err
+		if !IsPlugin(c.Name) {
+			return nil, fmt.Errorf("unknown call: %s", c.Name)
 		}
-
-		r, e := e.executeExternalCallSlice(ctx, index, c, slice, p)
+		p := c.Opt.(Plugin)
+		r, e := e.executePluginCallSlice(ctx, index, c, slice, p)
 		return r.(*Bitmap), e
 	}
 }
 
-// executeExternalCall executes an external plugin call.
-func (e *Executor) executeExternalCall(ctx context.Context, idx string, c *pql.Call, slices []uint64, opt *ExecOptions) (interface{}, error) {
+// executePluginCall executes an external plugin call.
+func (e *Executor) executePluginCall(ctx context.Context, idx string, c *pql.Call, slices []uint64, opt *ExecOptions) (interface{}, error) {
 	// Create plugin from registry for the reduction.
 	p, err := e.newPlugin(c)
 	if err != nil {
 		return nil, err
 	}
+	c.Opt = p
 
 	// Execute calls in bulk on each remote node and merge.
 	mapFn := func(slice uint64) (interface{}, error) {
-		return e.executeExternalCallSlice(ctx, idx, c, slice, p)
+		return e.executePluginCallSlice(ctx, idx, c, slice, p)
 	}
 
 	// Merge returned results at coordinating node.
@@ -374,14 +373,16 @@ func (e *Executor) executeExternalCall(ctx context.Context, idx string, c *pql.C
 	return other, nil
 }
 
-// executeExternalCallSlice executes the map phase of an external plugin call against a single slice.
-func (e *Executor) executeExternalCallSlice(ctx context.Context, idx string, c *pql.Call, slice uint64, p Plugin) (interface{}, error) {
-	var err error
+// executePluginCallSlice executes the map phase of an external plugin call against a single slice.
+func (e *Executor) executePluginCallSlice(ctx context.Context, idx string, c *pql.Call, slice uint64, p Plugin) (interface{}, error) {
 	if p == nil {
-		p, err = e.newPlugin(c)
-		if err != nil {
-			return nil, err
-		}
+		panic("plugin not present")
+		/*
+			p, err = e.newPlugin(c)
+			if err != nil {
+				return nil, err
+			}
+		*/
 	}
 
 	// Copy children.
@@ -398,29 +399,32 @@ func (e *Executor) executeExternalCallSlice(ctx context.Context, idx string, c *
 		Name:     c.Name,
 		Children: children,
 		Args:     args,
+		Opt:      p, //doubt it will marshall
 	}
 
 	return p.Map(ctx, idx, call, slice)
 }
 
+/*
 func (e *Executor) ExecuteCallSlice(ctx context.Context, idx string, c *pql.Call, slice uint64, p Plugin) (interface{}, error) {
 	switch c.Name {
 	case "Bitmap", "Difference", "Intersect", "Range", "Union":
-		return e.executeBitmapCallSlice(ctx, idx, c, slice)
+		return e.ExecuteBitmapCallSlice(ctx, idx, c, slice)
 	case "Count":
 		return nil, errors.New("nested Count in Plugin not currently supported")
 	case "TopN":
 		return nil, errors.New("nested TopN() not currently supported")
 	default:
-		return e.executeExternalCallSlice(ctx, idx, c, slice, p)
+		return e.executePluginCallSlice(ctx, idx, c, slice, p)
 	}
 }
+*/
 
 // executeSumCountSlice executes calculates the sum & count for fields on a slice.
 func (e *Executor) executeSumCountSlice(ctx context.Context, index string, c *pql.Call, slice uint64) (SumCount, error) {
 	var filter *Bitmap
 	if len(c.Children) == 1 {
-		bm, err := e.executeBitmapCallSlice(ctx, index, c.Children[0], slice)
+		bm, err := e.ExecuteBitmapCallSlice(ctx, index, c.Children[0], slice)
 		if err != nil {
 			return SumCount{}, err
 		}
@@ -557,7 +561,7 @@ func (e *Executor) executeTopNSlice(ctx context.Context, index string, c *pql.Ca
 	// Retrieve bitmap used to intersect.
 	var src *Bitmap
 	if len(c.Children) == 1 {
-		bm, err := e.executeBitmapCallSlice(ctx, index, c.Children[0], slice)
+		bm, err := e.ExecuteBitmapCallSlice(ctx, index, c.Children[0], slice)
 		if err != nil {
 			return nil, err
 		}
@@ -607,7 +611,7 @@ func (e *Executor) executeDifferenceSlice(ctx context.Context, index string, c *
 		return nil, fmt.Errorf("empty Difference query is currently not supported")
 	}
 	for i, input := range c.Children {
-		bm, err := e.executeBitmapCallSlice(ctx, index, input, slice)
+		bm, err := e.ExecuteBitmapCallSlice(ctx, index, input, slice)
 		if err != nil {
 			return nil, err
 		}
@@ -676,7 +680,7 @@ func (e *Executor) executeIntersectSlice(ctx context.Context, index string, c *p
 		return nil, fmt.Errorf("empty Intersect query is currently not supported")
 	}
 	for i, input := range c.Children {
-		bm, err := e.executeBitmapCallSlice(ctx, index, input, slice)
+		bm, err := e.ExecuteBitmapCallSlice(ctx, index, input, slice)
 		if err != nil {
 			return nil, err
 		}
@@ -879,7 +883,7 @@ func (e *Executor) executeFieldRangeSlice(ctx context.Context, index string, c *
 func (e *Executor) executeUnionSlice(ctx context.Context, index string, c *pql.Call, slice uint64) (*Bitmap, error) {
 	other := NewBitmap()
 	for i, input := range c.Children {
-		bm, err := e.executeBitmapCallSlice(ctx, index, input, slice)
+		bm, err := e.ExecuteBitmapCallSlice(ctx, index, input, slice)
 		if err != nil {
 			return nil, err
 		}
@@ -898,7 +902,7 @@ func (e *Executor) executeUnionSlice(ctx context.Context, index string, c *pql.C
 func (e *Executor) executeXorSlice(ctx context.Context, index string, c *pql.Call, slice uint64) (*Bitmap, error) {
 	other := NewBitmap()
 	for i, input := range c.Children {
-		bm, err := e.executeBitmapCallSlice(ctx, index, input, slice)
+		bm, err := e.ExecuteBitmapCallSlice(ctx, index, input, slice)
 		if err != nil {
 			return nil, err
 		}
@@ -923,7 +927,7 @@ func (e *Executor) executeCount(ctx context.Context, index string, c *pql.Call, 
 
 	// Execute calls in bulk on each remote node and merge.
 	mapFn := func(slice uint64) (interface{}, error) {
-		bm, err := e.executeBitmapCallSlice(ctx, index, c.Children[0], slice)
+		bm, err := e.ExecuteBitmapCallSlice(ctx, index, c.Children[0], slice)
 		if err != nil {
 			return 0, err
 		}
@@ -1030,7 +1034,7 @@ func (e *Executor) executeClearBitView(ctx context.Context, index string, c *pql
 		}
 
 		// Forward call to remote node otherwise.
-		if res, err := e.exec(ctx, node, index, &pql.Query{Calls: []*pql.Call{c}}, nil, opt); err != nil {
+		if res, err := e.execRemote(ctx, node, index, &pql.Query{Calls: []*pql.Call{c}}, nil, opt); err != nil {
 			return false, err
 		} else {
 			ret = res[0].(bool)
@@ -1136,7 +1140,7 @@ func (e *Executor) executeSetBitView(ctx context.Context, index string, c *pql.C
 		}
 
 		// Forward call to remote node otherwise.
-		if res, err := e.exec(ctx, node, index, &pql.Query{Calls: []*pql.Call{c}}, nil, opt); err != nil {
+		if res, err := e.execRemote(ctx, node, index, &pql.Query{Calls: []*pql.Call{c}}, nil, opt); err != nil {
 			return false, err
 		} else {
 			ret = res[0].(bool)
@@ -1201,7 +1205,7 @@ func (e *Executor) executeSetFieldValue(ctx context.Context, index string, c *pq
 	resp := make(chan error, len(nodes))
 	for _, node := range nodes {
 		go func(node *Node) {
-			_, err := e.exec(ctx, node, index, &pql.Query{Calls: []*pql.Call{c}}, nil, opt)
+			_, err := e.execRemote(ctx, node, index, &pql.Query{Calls: []*pql.Call{c}}, nil, opt)
 			resp <- err
 		}(node)
 	}
@@ -1259,7 +1263,7 @@ func (e *Executor) executeSetRowAttrs(ctx context.Context, index string, c *pql.
 	resp := make(chan error, len(nodes))
 	for _, node := range nodes {
 		go func(node *Node) {
-			_, err := e.exec(ctx, node, index, &pql.Query{Calls: []*pql.Call{c}}, nil, opt)
+			_, err := e.execRemote(ctx, node, index, &pql.Query{Calls: []*pql.Call{c}}, nil, opt)
 			resp <- err
 		}(node)
 	}
@@ -1346,7 +1350,7 @@ func (e *Executor) executeBulkSetRowAttrs(ctx context.Context, index string, cal
 	resp := make(chan error, len(nodes))
 	for _, node := range nodes {
 		go func(node *Node) {
-			_, err := e.exec(ctx, node, index, &pql.Query{Calls: calls}, nil, opt)
+			_, err := e.execRemote(ctx, node, index, &pql.Query{Calls: calls}, nil, opt)
 			resp <- err
 		}(node)
 	}
@@ -1404,7 +1408,7 @@ func (e *Executor) executeSetColumnAttrs(ctx context.Context, index string, c *p
 	resp := make(chan error, len(nodes))
 	for _, node := range nodes {
 		go func(node *Node) {
-			_, err := e.exec(ctx, node, index, &pql.Query{Calls: []*pql.Call{c}}, nil, opt)
+			_, err := e.execRemote(ctx, node, index, &pql.Query{Calls: []*pql.Call{c}}, nil, opt)
 			resp <- err
 		}(node)
 	}
@@ -1420,7 +1424,7 @@ func (e *Executor) executeSetColumnAttrs(ctx context.Context, index string, c *p
 }
 
 // exec executes a PQL query remotely for a set of slices on a node.
-func (e *Executor) exec(ctx context.Context, node *Node, index string, q *pql.Query, slices []uint64, opt *ExecOptions) (results []interface{}, err error) {
+func (e *Executor) execRemote(ctx context.Context, node *Node, index string, q *pql.Query, slices []uint64, opt *ExecOptions) (results []interface{}, err error) {
 	// Encode request object.
 	pbreq := &internal.QueryRequest{
 		Query:  q.String(),
@@ -1486,9 +1490,9 @@ func (e *Executor) exec(ctx context.Context, node *Node, index string, q *pql.Qu
 
 		switch call.Name {
 		case "Average", "Sum":
-			v, err = decodeSumCount(pb.Results[i].GetSumCount()), nil
+			v, err = DecodeSumCount(pb.Results[i].GetSumCount()), nil
 		case "TopN":
-			v, err = decodePairs(pb.Results[i].GetPairs()), nil
+			v, err = DecodePairs(pb.Results[i].GetPairs()), nil
 		case "Count":
 			v, err = pb.Results[i].N, nil
 		case "SetBit":
@@ -1498,7 +1502,14 @@ func (e *Executor) exec(ctx context.Context, node *Node, index string, q *pql.Qu
 		case "SetRowAttrs":
 		case "SetColumnAttrs":
 		default:
-			v, err = decodeBitmap(pb.Results[i].GetBitmap()), nil
+			//all pluggins must start with a $
+			//			if call.Name[0]=="$"{
+			if IsPlugin(call.Name) {
+				plugin := call.Opt.(Plugin)
+				v, err = plugin.Decode(pb.Results[i])
+			} else {
+				v, err = DecodeBitmap(pb.Results[i].GetBitmap()), nil
+			}
 		}
 		if err != nil {
 			return nil, err
@@ -1605,7 +1616,7 @@ func (e *Executor) mapper(ctx context.Context, ch chan mapResponse, nodes []*Nod
 			if n.Host == e.Host {
 				resp.result, resp.err = e.mapperLocal(ctx, nodeSlices, mapFn, reduceFn)
 			} else if !opt.Remote {
-				results, err := e.exec(ctx, n, index, &pql.Query{Calls: []*pql.Call{c}}, nodeSlices, opt)
+				results, err := e.execRemote(ctx, n, index, &pql.Query{Calls: []*pql.Call{c}}, nodeSlices, opt)
 				if len(results) > 0 {
 					resp.result = results[0]
 				}
@@ -1744,7 +1755,7 @@ func encodeSumCount(sc SumCount) *internal.SumCount {
 	}
 }
 
-func decodeSumCount(pb *internal.SumCount) SumCount {
+func DecodeSumCount(pb *internal.SumCount) SumCount {
 	return SumCount{
 		Sum:   pb.Sum,
 		Count: pb.Count,

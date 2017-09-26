@@ -414,7 +414,7 @@ func encodePairs(a Pairs) []*internal.Pair {
 	return other
 }
 
-func decodePairs(a []*internal.Pair) []Pair {
+func DecodePairs(a []*internal.Pair) []Pair {
 	other := make([]Pair, len(a))
 	for i := range a {
 		other[i] = decodePair(a[i])

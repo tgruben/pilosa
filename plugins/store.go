@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/pilosa/pilosa"
+	"github.com/pilosa/pilosa/internal"
 	"github.com/pilosa/pilosa/pql"
 )
 
@@ -34,15 +35,14 @@ func (p *StorePlugin) Map(ctx context.Context, index string, call *pql.Call, sli
 		return nil, errors.New("id required")
 	}
 	bm := pilosa.NewBitmap()
-	child, _ := p.executor.ExecuteCallSlice(ctx, index, call.Children[0], slice, p)
-	switch v := child.(type) {
-	case *pilosa.Bitmap: //handle bitmaps
-
-		bm.CopyFrom(v)
+	child, err := p.executor.ExecuteBitmapCallSlice(ctx, index, call, slice)
+	if err != nil {
+		return nil, errors.New("Invalid Bitmap Argument")
+	} else {
+		bm.CopyFrom(child)
 		p.executor.Holder.Store(index, slice, id, bm)
 		return "OK", nil
 	}
-	return nil, errors.New("Invalid Bitmap Argument")
 
 }
 
@@ -50,4 +50,12 @@ func (p *StorePlugin) Map(ctx context.Context, index string, call *pql.Call, sli
 func (p *StorePlugin) Reduce(ctx context.Context, prev, v interface{}) interface{} {
 
 	return v
+}
+
+func (p *StorePlugin) Decode(qr *internal.QueryResult) (interface{}, error) {
+	return nil, nil
+}
+
+func (p *StorePlugin) Final() interface{} {
+	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/pilosa/pilosa"
+	"github.com/pilosa/pilosa/internal"
 	"github.com/pilosa/pilosa/pql"
 )
 
@@ -40,4 +41,12 @@ func (p *PurgePlugin) Map(ctx context.Context, index string, call *pql.Call, sli
 func (p *PurgePlugin) Reduce(ctx context.Context, prev, v interface{}) interface{} {
 
 	return v
+}
+
+func (p *PurgePlugin) Decode(qr *internal.QueryResult) (interface{}, error) {
+	return nil, nil
+}
+
+func (p *PurgePlugin) Final() interface{} {
+	return nil
 }

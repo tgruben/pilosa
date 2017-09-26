@@ -284,13 +284,13 @@ func encodeBitmap(b *Bitmap) *internal.Bitmap {
 }
 
 // decodeBitmap converts b from its internal representation.
-func decodeBitmap(pb *internal.Bitmap) *Bitmap {
+func DecodeBitmap(pb *internal.Bitmap) *Bitmap {
 	if pb == nil {
 		return nil
 	}
 
 	b := NewBitmap()
-	b.Attrs = decodeAttrs(pb.Attrs)
+	b.Attrs = DecodeAttrs(pb.Attrs)
 	for _, v := range pb.Bits {
 		b.SetBit(v)
 	}

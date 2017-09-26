@@ -838,11 +838,10 @@ func TestExecutor_Execute_ExternalCall(t *testing.T) {
 	p := MockPluginConstructorWrapper{
 		mock: &MockPlugin{
 			MapFn: func(ctx context.Context, index string, call *pql.Call, slice uint64) (interface{}, error) {
-				child0, err := e.ExecuteCallSlice(ctx, index, call.Children[0], slice, nil)
+				bm, err := e.ExecuteBitmapCallSlice(ctx, index, call.Children[0], slice)
 				if err != nil {
 					return nil, err
 				}
-				bm := child0.(*pilosa.Bitmap)
 				return uint64(bm.Count() + 10), nil
 			},
 			ReduceFn: func(ctx context.Context, prev, v interface{}) interface{} {
