@@ -389,6 +389,20 @@ func (f *Fragment) SetBit(rowID, columnID uint64) (changed bool, err error) {
 	return f.setBit(rowID, columnID)
 }
 
+func (f *Fragment) AllIds() Pairs {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	obj := f.storage.Max() / SliceWidth
+	result := make(Pairs, 0, obj)
+	for id := uint64(0); id <= obj; id++ {
+		n := f.storage.CountRange(id*SliceWidth, (id+1)*SliceWidth)
+		if n > 0 {
+			result = append(result, Pair{ID: id, Count: n})
+		}
+	}
+	return result
+}
+
 func (f *Fragment) setBit(rowID, columnID uint64) (changed bool, err error) {
 	changed = false
 	// Determine the position of the bit in the storage.
