@@ -482,6 +482,12 @@ func (b *Bitmap) Xor(other *Bitmap) *Bitmap {
 	return output
 }
 
+func (b *Bitmap) Flip() {
+	for i := 0; i < len(b.containers); {
+		b.containers[i] = b.containers[i].flip()
+	}
+}
+
 // removeEmptyContainers deletes all containers that have a count of zero.
 func (b *Bitmap) removeEmptyContainers() {
 	for i := 0; i < len(b.containers); {
@@ -765,7 +771,7 @@ func (b *Bitmap) Check() error {
 }
 
 //Perform a logical negate of the bits in the range [start,end].
-func (b *Bitmap) Flip(start, end uint64) *Bitmap {
+func (b *Bitmap) FlipO(start, end uint64) *Bitmap {
 	result := NewBitmap()
 	itr := b.Iterator()
 	v, eof := itr.Next()
@@ -1624,6 +1630,32 @@ func (c *container) clone() *container {
 	}
 
 	return other
+}
+func (c *container) flip() *container {
+	results := &container{}
+	switch c.container_type {
+	case ContainerArray:
+		results = c.flipArray()
+	case ContainerBitmap:
+		results = c.flipBitmap()
+	case ContainerRun:
+		results = c.flipRun()
+	}
+	return results
+}
+
+func (c *container) flipArray() *container {
+	a := c.clone()
+	a.arrayToBitmap()
+	return a.flipBitmap()
+}
+
+func (c *container) flipRun() *container {
+	output := &container{runs: []interval16{
+		{start: 0, last: maxContainerVal},
+	},
+		container_type: ContainerRun}
+	return differenceRunRun(output, c)
 }
 
 // flipBitmap returns a new bitmap containter containing the inverse of all
