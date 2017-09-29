@@ -27,11 +27,11 @@ func (iv interval16) String() string {
 }
 
 func (c *container) String() string {
-	return fmt.Sprintf("<%s container  n=%d, array[%d], runs[%d], bitmap[%d]> type:%d", c.info().Type, c.n, len(c.array), len(c.runs), len(c.bitmap), c.container_type)
+	return fmt.Sprintf("<%s container  n=%d, array[%d], runs[%d], bitmap[%d]> type:%d", c.info().Type, c.n, len(c.array), len(c.runs), len(c.bitmap), c.containerType)
 }
 
 func TestRunAppendInterval(t *testing.T) {
-	a := container{container_type: ContainerRun}
+	a := container{containerType: ContainerRun}
 	tests := []struct {
 		base []interval16
 		app  interval16
@@ -80,7 +80,7 @@ func TestInterval16RunLen(t *testing.T) {
 }
 
 func TestContainerRunAdd(t *testing.T) {
-	c := container{runs: make([]interval16, 0), container_type: ContainerRun}
+	c := container{runs: make([]interval16, 0), containerType: ContainerRun}
 	tests := []struct {
 		op  uint16
 		exp []interval16
@@ -111,7 +111,7 @@ func TestContainerRunAdd(t *testing.T) {
 }
 
 func TestContainerRunAdd2(t *testing.T) {
-	c := container{runs: make([]interval16, 0), container_type: ContainerRun}
+	c := container{runs: make([]interval16, 0), containerType: ContainerRun}
 	ret := c.add(0)
 	if !ret {
 		t.Fatalf("result of adding new bit should be true: %v", c.runs)
@@ -126,7 +126,7 @@ func TestContainerRunAdd2(t *testing.T) {
 }
 
 func TestRunCountRange(t *testing.T) {
-	c := container{runs: make([]interval16, 0), container_type: ContainerRun}
+	c := container{runs: make([]interval16, 0), containerType: ContainerRun}
 	cnt := c.runCountRange(2, 9)
 	if cnt != 0 {
 		t.Fatalf("should get 0 from empty container, but got: %v", cnt)
@@ -179,7 +179,7 @@ func TestRunCountRange(t *testing.T) {
 }
 
 func TestRunContains(t *testing.T) {
-	c := container{runs: make([]interval16, 0), container_type: ContainerRun}
+	c := container{runs: make([]interval16, 0), containerType: ContainerRun}
 	if c.runContains(5) {
 		t.Fatalf("empty run container should not contain 5")
 	}
@@ -201,7 +201,7 @@ func TestRunContains(t *testing.T) {
 }
 
 func TestBitmapCountRange(t *testing.T) {
-	c := container{container_type: ContainerBitmap}
+	c := container{containerType: ContainerBitmap}
 	tests := []struct {
 		start  int
 		end    int
@@ -227,11 +227,11 @@ func TestBitmapCountRange(t *testing.T) {
 
 func TestIntersectionCountArrayBitmap3(t *testing.T) {
 	a, b := &container{}, &container{}
-	a.container_type = ContainerBitmap
+	a.containerType = ContainerBitmap
 	a.bitmap = getFullBitmap()
 	a.n = maxContainerVal + 1
 
-	b.container_type = ContainerBitmap
+	b.containerType = ContainerBitmap
 	b.bitmap = getFullBitmap()
 	b.n = maxContainerVal + 1
 	res := intersectBitmapBitmap(a, b)
@@ -288,9 +288,9 @@ func TestIntersectionCountArrayBitmap2(t *testing.T) {
 
 	for i, test := range tests {
 		a.array = test.array
-		a.container_type = ContainerArray
+		a.containerType = ContainerArray
 		b.bitmap = test.bitmap
-		b.container_type = ContainerBitmap
+		b.containerType = ContainerBitmap
 		ret1 := int(intersectionCountArrayBitmapOld(a, b))
 		ret2 := intersectionCountArrayBitmap(a, b)
 		if ret1 != ret2 || ret2 != test.exp {
@@ -300,7 +300,7 @@ func TestIntersectionCountArrayBitmap2(t *testing.T) {
 }
 
 func TestRunRemove(t *testing.T) {
-	c := container{runs: []interval16{{start: 2, last: 10}, {start: 12, last: 13}, {start: 15, last: 16}}, container_type: ContainerRun}
+	c := container{runs: []interval16{{start: 2, last: 10}, {start: 12, last: 13}, {start: 15, last: 16}}, containerType: ContainerRun}
 	tests := []struct {
 		op     uint16
 		exp    []interval16
@@ -334,7 +334,7 @@ func TestRunRemove(t *testing.T) {
 }
 
 func TestRunMax(t *testing.T) {
-	c := container{runs: []interval16{{start: 2, last: 10}, {start: 12, last: 13}, {start: 15, last: 16}}, container_type: ContainerRun}
+	c := container{runs: []interval16{{start: 2, last: 10}, {start: 12, last: 13}, {start: 15, last: 16}}, containerType: ContainerRun}
 	max := c.max()
 	if max != 16 {
 		t.Fatalf("max for %v should be 16", c.runs)
@@ -649,11 +649,11 @@ func TestUnionMixed(t *testing.T) {
 	b := &container{}
 
 	a.runs = []interval16{{start: 5, last: 10}}
-	a.container_type = ContainerRun
+	a.containerType = ContainerRun
 	a.n = 6
 
 	b.array = []uint16{1, 4, 5, 7, 10, 11, 12}
-	b.container_type = ContainerArray
+	b.containerType = ContainerArray
 	b.n = 7
 	res := union(a, b)
 	if !reflect.DeepEqual(res.array, []uint16{1, 4, 5, 6, 7, 8, 9, 10, 11, 12}) {
@@ -672,7 +672,7 @@ func TestUnionMixed(t *testing.T) {
 	c := &container{bitmap: make([]uint64, bitmapN)}
 	c.bitmap[0] = uint64(0x3)
 	c.n = 2
-	c.container_type = ContainerBitmap
+	c.containerType = ContainerBitmap
 
 	expected := make([]uint64, bitmapN)
 	expected[0] = uint64(2019)
@@ -704,10 +704,10 @@ func TestIntersectMixed(t *testing.T) {
 
 	a.runs = []interval16{{start: 5, last: 10}}
 	a.n = 6
-	a.container_type = ContainerRun
+	a.containerType = ContainerRun
 	b.array = []uint16{1, 4, 5, 7, 10, 11, 12}
 	b.n = 7
-	b.container_type = ContainerArray
+	b.containerType = ContainerArray
 	res := intersect(a, b)
 	if !reflect.DeepEqual(res.array, []uint16{5, 7, 10}) {
 		t.Fatalf("test #1 expected %v, but got %v", []uint16{5, 7, 10}, res.array)
@@ -723,7 +723,7 @@ func TestIntersectMixed(t *testing.T) {
 	}
 	c.bitmap = []uint64{0x60}
 	c.n = 2
-	c.container_type = ContainerBitmap
+	c.containerType = ContainerBitmap
 
 	res = intersect(c, a)
 	if !reflect.DeepEqual(res.array, []uint16{5, 6}) {
@@ -753,15 +753,15 @@ func TestDifferenceMixed(t *testing.T) {
 
 	a.runs = []interval16{{start: 5, last: 10}}
 	a.n = a.runCountRange(0, 100)
-	a.container_type = ContainerRun
+	a.containerType = ContainerRun
 
 	b.array = []uint16{0, 2, 4, 6, 8, 10, 12}
 	b.n = len(b.array)
-	b.container_type = ContainerArray
+	b.containerType = ContainerArray
 
 	d.array = []uint16{1, 3, 5, 7, 9, 11, 12}
 	d.n = len(d.array)
-	d.container_type = ContainerArray
+	d.containerType = ContainerArray
 
 	res := difference(a, b)
 
@@ -781,7 +781,7 @@ func TestDifferenceMixed(t *testing.T) {
 
 	c.bitmap = []uint64{0x64}
 	c.n = c.countRange(0, 100)
-	c.container_type = ContainerBitmap
+	c.containerType = ContainerBitmap
 	res = difference(c, a)
 	if !reflect.DeepEqual(res.bitmap, []uint64{0x4}) {
 		t.Fatalf("test #4 expected %v, but got %v", []uint16{4}, res.bitmap)
@@ -1262,7 +1262,7 @@ func TestBitmapZeroRange(t *testing.T) {
 		if test.expN != c.n {
 			t.Fatalf("test #%v expected n to be %v, but got %v", i, test.expN, c.n)
 		}
-		for i, _ := range test.bitmap {
+		for i := range test.bitmap {
 			c.bitmap[i] = 0
 		}
 	}
@@ -1301,7 +1301,7 @@ func TestUnionBitmapRun(t *testing.T) {
 		if ret.n != test.expN {
 			t.Fatalf("test #%v expected n to be %v, but got %v", i, test.expN, ret.n)
 		}
-		for i, _ := range test.bitmap {
+		for i := range test.bitmap {
 			a.bitmap[i] = 0
 		}
 	}
@@ -1341,7 +1341,7 @@ func TestBitmapCountRuns(t *testing.T) {
 			t.Fatalf("test #%v expected %v but got %v", i, test.exp, ret)
 		}
 
-		for j, _ := range test.bitmap {
+		for j := range test.bitmap {
 			c.bitmap[j] = 0
 		}
 	}
@@ -1566,8 +1566,8 @@ func TestDifferenceRunBitmapOutputBitmap(t *testing.T) {
 }
 
 func TestDifferenceRunBitmapOutputArray(t *testing.T) {
-	a := &container{container_type: ContainerRun}
-	b := &container{container_type: ContainerBitmap}
+	a := &container{containerType: ContainerRun}
+	b := &container{containerType: ContainerBitmap}
 	tests := []struct {
 		runs   []interval16
 		bitmap []uint64
@@ -1625,8 +1625,8 @@ func TestDifferenceBitmapRun(t *testing.T) {
 }
 
 func TestDifferenceBitmapArray(t *testing.T) {
-	a := &container{bitmap: make([]uint64, bitmapN), container_type: ContainerBitmap}
-	b := &container{container_type: ContainerArray}
+	a := &container{bitmap: make([]uint64, bitmapN), containerType: ContainerBitmap}
+	b := &container{containerType: ContainerArray}
 	tests := []struct {
 		bitmap []uint64
 		array  []uint16
@@ -1649,8 +1649,8 @@ func TestDifferenceBitmapArray(t *testing.T) {
 	}
 }
 func TestDifferenceBitmapBitmap(t *testing.T) {
-	a := &container{bitmap: make([]uint64, bitmapN), container_type: ContainerBitmap}
-	b := &container{bitmap: make([]uint64, bitmapN), container_type: ContainerBitmap}
+	a := &container{bitmap: make([]uint64, bitmapN), containerType: ContainerBitmap}
+	b := &container{bitmap: make([]uint64, bitmapN), containerType: ContainerBitmap}
 	tests := []struct {
 		abitmap []uint64
 		bbitmap []uint64
@@ -1679,8 +1679,8 @@ func TestDifferenceBitmapBitmap(t *testing.T) {
 }
 
 func TestDifferenceRunRun(t *testing.T) {
-	a := &container{container_type: ContainerRun}
-	b := &container{container_type: ContainerRun}
+	a := &container{containerType: ContainerRun}
+	b := &container{containerType: ContainerRun}
 	tests := []struct {
 		aruns []interval16
 		bruns []interval16
@@ -1713,7 +1713,7 @@ func TestDifferenceRunRun(t *testing.T) {
 }
 
 func TestWriteReadArray(t *testing.T) {
-	ca := &container{array: []uint16{1, 10, 100, 1000}, n: 4, container_type: ContainerArray}
+	ca := &container{array: []uint16{1, 10, 100, 1000}, n: 4, containerType: ContainerArray}
 	ba := &Bitmap{keys: []uint64{0}, containers: []*container{ca}}
 	ba2 := &Bitmap{}
 	var buf bytes.Buffer
@@ -1732,7 +1732,7 @@ func TestWriteReadArray(t *testing.T) {
 
 func TestWriteReadBitmap(t *testing.T) {
 	// create bitmap containing > 4096 bits
-	cb := &container{bitmap: make([]uint64, bitmapN), n: 129 * 32, container_type: ContainerBitmap}
+	cb := &container{bitmap: make([]uint64, bitmapN), n: 129 * 32, containerType: ContainerBitmap}
 	for i := 0; i < 129; i++ {
 		cb.bitmap[i] = 0x5555555555555555
 	}
@@ -1754,7 +1754,7 @@ func TestWriteReadBitmap(t *testing.T) {
 
 func TestWriteReadFullBitmap(t *testing.T) {
 	// create bitmap containing > 4096 bits
-	cb := &container{bitmap: make([]uint64, bitmapN), n: 65536, container_type: ContainerBitmap}
+	cb := &container{bitmap: make([]uint64, bitmapN), n: 65536, containerType: ContainerBitmap}
 	for i := 0; i < bitmapN; i++ {
 		cb.bitmap[i] = 0xffffffffffffffff
 	}
@@ -1782,7 +1782,7 @@ func TestWriteReadFullBitmap(t *testing.T) {
 }
 
 func TestWriteReadRun(t *testing.T) {
-	cr := &container{runs: []interval16{{start: 3, last: 13}, {start: 100, last: 109}}, n: 21, container_type: ContainerRun}
+	cr := &container{runs: []interval16{{start: 3, last: 13}, {start: 100, last: 109}}, n: 21, containerType: ContainerRun}
 	br := &Bitmap{keys: []uint64{0}, containers: []*container{cr}}
 	br2 := &Bitmap{}
 	var buf bytes.Buffer
@@ -1806,21 +1806,21 @@ func TestXorArrayRun(t *testing.T) {
 		exp *container
 	}{
 		{
-			a:   &container{array: []uint16{1, 5, 10, 11, 12}, container_type: ContainerArray},
-			b:   &container{runs: []interval16{{start: 2, last: 10}, {start: 12, last: 13}, {start: 15, last: 16}}, container_type: ContainerRun},
-			exp: &container{array: []uint16{1, 2, 3, 4, 6, 7, 8, 9, 11, 13, 15, 16}, container_type: ContainerArray, n: 12},
+			a:   &container{array: []uint16{1, 5, 10, 11, 12}, containerType: ContainerArray},
+			b:   &container{runs: []interval16{{start: 2, last: 10}, {start: 12, last: 13}, {start: 15, last: 16}}, containerType: ContainerRun},
+			exp: &container{array: []uint16{1, 2, 3, 4, 6, 7, 8, 9, 11, 13, 15, 16}, containerType: ContainerArray, n: 12},
 		}, {
-			a:   &container{array: []uint16{1, 5, 10, 11, 12, 13, 14}, container_type: ContainerArray},
-			b:   &container{runs: []interval16{{start: 2, last: 10}, {start: 12, last: 13}, {start: 15, last: 16}}, container_type: ContainerRun},
-			exp: &container{array: []uint16{1, 2, 3, 4, 6, 7, 8, 9, 11, 14, 15, 16}, container_type: ContainerArray, n: 12},
+			a:   &container{array: []uint16{1, 5, 10, 11, 12, 13, 14}, containerType: ContainerArray},
+			b:   &container{runs: []interval16{{start: 2, last: 10}, {start: 12, last: 13}, {start: 15, last: 16}}, containerType: ContainerRun},
+			exp: &container{array: []uint16{1, 2, 3, 4, 6, 7, 8, 9, 11, 14, 15, 16}, containerType: ContainerArray, n: 12},
 		}, {
-			a:   &container{array: []uint16{65535}, container_type: ContainerArray},
-			b:   &container{runs: []interval16{{start: 65534, last: 65535}}, container_type: ContainerRun},
-			exp: &container{array: []uint16{65534}, container_type: ContainerArray, n: 1},
+			a:   &container{array: []uint16{65535}, containerType: ContainerArray},
+			b:   &container{runs: []interval16{{start: 65534, last: 65535}}, containerType: ContainerRun},
+			exp: &container{array: []uint16{65534}, containerType: ContainerArray, n: 1},
 		}, {
-			a:   &container{array: []uint16{65535}, container_type: ContainerArray},
-			b:   &container{runs: []interval16{{start: 65535, last: 65535}}, container_type: ContainerRun},
-			exp: &container{array: []uint16{}, container_type: ContainerArray, n: 0},
+			a:   &container{array: []uint16{65535}, containerType: ContainerArray},
+			b:   &container{runs: []interval16{{start: 65535, last: 65535}}, containerType: ContainerRun},
+			exp: &container{array: []uint16{}, containerType: ContainerArray, n: 0},
 		},
 	}
 
@@ -1841,8 +1841,8 @@ func TestXorArrayRun(t *testing.T) {
 
 //special case that didn't fit the xorrunrun table testing below.
 func TestXorRunRun1(t *testing.T) {
-	a := &container{container_type: ContainerRun}
-	b := &container{container_type: ContainerRun}
+	a := &container{containerType: ContainerRun}
+	b := &container{containerType: ContainerRun}
 	a.runs = []interval16{{start: 4, last: 10}}
 	b.runs = []interval16{{start: 5, last: 10}}
 	ret := xorRunRun(a, b)
@@ -1856,8 +1856,8 @@ func TestXorRunRun1(t *testing.T) {
 }
 
 func TestXorRunRun(t *testing.T) {
-	a := &container{container_type: ContainerRun}
-	b := &container{container_type: ContainerRun}
+	a := &container{containerType: ContainerRun}
+	b := &container{containerType: ContainerRun}
 	tests := []struct {
 		aruns []interval16
 		bruns []interval16
@@ -1954,7 +1954,7 @@ func TestXorRunRun(t *testing.T) {
 }
 
 func TestBitmapFlip(t *testing.T) {
-	c := &container{bitmap: make([]uint64, bitmapN), container_type: ContainerBitmap}
+	c := &container{bitmap: make([]uint64, bitmapN), containerType: ContainerBitmap}
 
 	ttable := []struct {
 		original uint64
@@ -1986,7 +1986,7 @@ func TestBitmapFlip(t *testing.T) {
 }
 
 func TestBitmapXorRange(t *testing.T) {
-	c := &container{bitmap: make([]uint64, bitmapN), container_type: ContainerBitmap}
+	c := &container{bitmap: make([]uint64, bitmapN), containerType: ContainerBitmap}
 	tests := []struct {
 		bitmap []uint64
 		start  uint64
@@ -2054,8 +2054,8 @@ func TestBitmapXorRange(t *testing.T) {
 }
 
 func TestXorBitmapRun(t *testing.T) {
-	a := &container{container_type: ContainerBitmap}
-	b := &container{container_type: ContainerRun}
+	a := &container{containerType: ContainerBitmap}
+	b := &container{containerType: ContainerRun}
 	tests := []struct {
 		bitmap []uint64
 		runs   []interval16
@@ -2575,11 +2575,11 @@ func TestIntersectArrayBitmap(t *testing.T) {
 
 	for i, test := range tests {
 		a.array = test.array
-		a.container_type = ContainerArray
+		a.containerType = ContainerArray
 		for i, bmval := range test.bitmap {
 			b.bitmap[i] = bmval
 		}
-		b.container_type = ContainerBitmap
+		b.containerType = ContainerBitmap
 		ret1 := intersectArrayBitmapOld(a, b).array
 		ret2 := intersectArrayBitmap(a, b).array
 		if len(ret1) == 0 && len(ret2) == 0 && len(test.exp) == 0 {
