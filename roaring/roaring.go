@@ -482,9 +482,22 @@ func (b *Bitmap) Xor(other *Bitmap) *Bitmap {
 	return output
 }
 
-func (b *Bitmap) Flip() {
-	for i := 0; i < len(b.containers); {
-		b.containers[i] = b.containers[i].flip()
+func (b *Bitmap) Negate() {
+	if len(b.containers) == 0 {
+		// special case when there are no containers
+		// just set to single full container
+
+		full := &container{runs: []interval16{
+			{start: 0, last: maxContainerVal},
+		},
+			n:              maxContainerVal + 1,
+			container_type: ContainerRun}
+
+		b.containers = append(b.containers, full)
+	} else {
+		for i := 0; i < len(b.containers); i++ {
+			b.containers[i] = b.containers[i].negate()
+		}
 	}
 }
 
@@ -771,7 +784,7 @@ func (b *Bitmap) Check() error {
 }
 
 //Perform a logical negate of the bits in the range [start,end].
-func (b *Bitmap) FlipO(start, end uint64) *Bitmap {
+func (b *Bitmap) Flip(start, end uint64) *Bitmap {
 	result := NewBitmap()
 	itr := b.Iterator()
 	v, eof := itr.Next()
@@ -1631,26 +1644,26 @@ func (c *container) clone() *container {
 
 	return other
 }
-func (c *container) flip() *container {
+func (c *container) negate() *container {
 	results := &container{}
 	switch c.container_type {
 	case ContainerArray:
-		results = c.flipArray()
+		results = c.negateArray()
 	case ContainerBitmap:
-		results = c.flipBitmap()
+		results = c.negateBitmap()
 	case ContainerRun:
-		results = c.flipRun()
+		results = c.negateRun()
 	}
 	return results
 }
 
-func (c *container) flipArray() *container {
+func (c *container) negateArray() *container {
 	a := c.clone()
 	a.arrayToBitmap()
-	return a.flipBitmap()
+	return a.negateBitmap()
 }
 
-func (c *container) flipRun() *container {
+func (c *container) negateRun() *container {
 	output := &container{runs: []interval16{
 		{start: 0, last: maxContainerVal},
 	},
@@ -1660,7 +1673,7 @@ func (c *container) flipRun() *container {
 
 // flipBitmap returns a new bitmap containter containing the inverse of all
 // bits in c.
-func (c *container) flipBitmap() *container {
+func (c *container) negateBitmap() *container {
 	other := &container{bitmap: make([]uint64, bitmapN), container_type: ContainerBitmap}
 
 	for i, bitmap := range c.bitmap {
@@ -2585,7 +2598,7 @@ func differenceRunArray(a, b *container) *container {
 func differenceRunBitmap(a, b *container) *container {
 	// If a is full, difference is the flip of b.
 	if a.n == 65536 {
-		return b.flipBitmap()
+		return b.negateBitmap()
 	}
 
 	output := &container{container_type: ContainerBitmap, bitmap: make([]uint64, bitmapN)}

@@ -321,7 +321,7 @@ func (e *Executor) executeBitmapCall(ctx context.Context, index string, c *pql.C
 	return bm, nil
 }
 
-// ExecuteBitmapCallSlice executes a bitmap call for a single slice.
+// executeBitmapCallSlice executes a bitmap call for a single slice.
 func (e *Executor) ExecuteBitmapCallSlice(ctx context.Context, index string, c *pql.Call, slice uint64) (*Bitmap, error) {
 	switch c.Name {
 	case "Bitmap":
@@ -409,7 +409,7 @@ func (e *Executor) executePluginCallSlice(ctx context.Context, idx string, c *pq
 func (e *Executor) ExecuteCallSlice(ctx context.Context, idx string, c *pql.Call, slice uint64, p Plugin) (interface{}, error) {
 	switch c.Name {
 	case "Bitmap", "Difference", "Intersect", "Range", "Union":
-		return e.ExecuteBitmapCallSlice(ctx, idx, c, slice)
+		return e.executeBitmapCallSlice(ctx, idx, c, slice)
 	case "Count":
 		return nil, errors.New("nested Count in Plugin not currently supported")
 	case "TopN":

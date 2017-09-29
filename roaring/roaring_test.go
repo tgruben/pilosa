@@ -1099,3 +1099,16 @@ func TestBitmap_Intersect(t *testing.T) {
 		t.Fatalf("Counts do not match %d %d", bm0.Count(), result.Count())
 	}
 }
+
+func TestBitmap_Negate(t *testing.T) {
+	bm := roaring.NewBitmap()
+	bm.Negate()
+	if bm.Count() != 65536 {
+		t.Fatalf("%d\n", bm.Count())
+	}
+	bm.Negate()
+	if bm.Count() != 0 {
+		t.Fatalf("%d\n", bm.Count())
+	}
+
+}

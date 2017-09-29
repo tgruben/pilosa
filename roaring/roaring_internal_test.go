@@ -1973,7 +1973,7 @@ func TestBitmapFlip(t *testing.T) {
 		expectedN -= int(popcount(tt.original))
 	}
 
-	o := c.flipBitmap()
+	o := c.negateBitmap()
 
 	for i, tt := range ttable {
 		if o.bitmap[i] != tt.flipped {
