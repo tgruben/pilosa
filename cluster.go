@@ -745,6 +745,7 @@ func (c *Cluster) followResizeInstruction(instr *internal.ResizeInstruction) {
 				fmt.Printf("\n**** Get slice %d for index %s from host %s ****\n\n", src.Slice, src.Index, src.URI)
 
 				srcURI := decodeURI(src.URI)
+				fmt.Printf("\nsrcURI %s ****\n\n", srcURI.String())
 
 				// TODO: there's a possible race condition here;
 				// if NodeStatus has not been shared with the joining
@@ -754,24 +755,28 @@ func (c *Cluster) followResizeInstruction(instr *internal.ResizeInstruction) {
 				// Retrieve frame.
 				f := c.Holder.Frame(src.Index, src.Frame)
 				if f == nil {
+					fmt.Println("F", src.Index, src.Frame)
 					return ErrFrameNotFound
 				}
 
 				// Create view.
 				v, err := f.CreateViewIfNotExists(src.View)
 				if err != nil {
+					fmt.Println("V", err)
 					return err
 				}
 
 				// Create the local fragment.
 				frag, err := v.CreateFragmentIfNotExists(src.Slice)
 				if err != nil {
+					fmt.Println("G", err)
 					return err
 				}
 
 				// Stream slice from remote node.
 				rd, err := client.RetrieveSliceFromURI(context.Background(), src.Index, src.Frame, src.View, src.Slice, srcURI)
 				if err != nil {
+					fmt.Println("R", err)
 					return err
 				} else if rd == nil {
 					return fmt.Errorf("slice %v doesn't exist on host: %s", src.Slice, src.URI)

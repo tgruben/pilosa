@@ -91,7 +91,6 @@ func TestIndex_CreateFrame(t *testing.T) {
 		})
 	})
 
-	// Ensure frame can include range columns.
 	t.Run("RangeEnabled", func(t *testing.T) {
 		t.Run("OK", func(t *testing.T) {
 			index := test.MustOpenIndex()
@@ -121,30 +120,6 @@ func TestIndex_CreateFrame(t *testing.T) {
 				{Name: "field1", Type: pilosa.FieldTypeInt, Min: 11, Max: 21},
 			}) {
 				t.Fatalf("unexpected fields after reopen: %#v", f.Fields())
-			}
-		})
-
-		t.Run("ErrInverseRangeNotAllowed", func(t *testing.T) {
-			index := test.MustOpenIndex()
-			defer index.Close()
-
-			if _, err := index.CreateFrame("f", pilosa.FrameOptions{
-				InverseEnabled: true,
-				RangeEnabled:   true,
-			}); err != pilosa.ErrInverseRangeNotAllowed {
-				t.Fatal(err)
-			}
-		})
-
-		t.Run("ErrRangeCacheNotAllowed", func(t *testing.T) {
-			index := test.MustOpenIndex()
-			defer index.Close()
-
-			if _, err := index.CreateFrame("f", pilosa.FrameOptions{
-				RangeEnabled: true,
-				CacheType:    pilosa.CacheTypeRanked,
-			}); err != pilosa.ErrRangeCacheNotAllowed {
-				t.Fatal(err)
 			}
 		})
 
