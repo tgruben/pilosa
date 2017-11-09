@@ -241,7 +241,7 @@ func (s *Server) monitorAntiEntropy() {
 		// Wait for tick or a close.
 		select {
 		case <-s.closing:
-			return
+			break
 		case <-ticker.C:
 			s.Holder.Stats.Count("AntiEntropy", 1, 1.0)
 		}

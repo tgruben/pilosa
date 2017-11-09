@@ -176,6 +176,7 @@ func loadNormal(router *mux.Router, handler *Handler) {
 	router.HandleFunc("/index/{index}/time-quantum", handler.handlePatchIndexTimeQuantum).Methods("PATCH")
 	router.HandleFunc("/index/{index}/attr", handler.handleGetIndexAttributes).Methods("GET")
 	router.HandleFunc("/index/{index}/attr", handler.handlePostIndexAttributes).Methods("POST")
+	router.HandleFunc("/index/{index}/frame/{frame}/view/{view}/{slice}", handler.handlePostViewMerge).Methods("POST")
 
 	router.HandleFunc("/recalculate-caches", handler.handleRecalculateCaches).Methods("POST")
 
@@ -2137,4 +2138,57 @@ func (h *Handler) handlePostFrameAttr(w http.ResponseWriter, r *http.Request) {
 	if err := db.SetAttributeData(r.Body); err != nil {
 		h.logger().Printf("write response error: %s", err)
 	}
+}
+
+// handlePostFragmentMerge handles POST /fragment/data requests.
+func (h *Handler) handlePostViewMerge(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("HFS")
+	indexName := mux.Vars(r)["index"]
+	frameName := mux.Vars(r)["frame"]
+	viewName := mux.Vars(r)["view"]
+	sliceStr := mux.Vars(r)["slice"]
+	slice, err := strconv.ParseUint(sliceStr, 10, 64)
+	if err != nil {
+		//TODO put correct error number
+		http.Error(w, ErrFrameNotFound.Error(), http.StatusNotFound)
+	}
+	roaringBytes, err := ioutil.ReadAll(r.Body)
+	fmt.Println("READ", len(roaringBytes))
+	for _, node := range h.Cluster.FragmentNodes(indexName, slice) {
+		if node.URI == h.URI {
+			// Retrieve frame.
+			f := h.Holder.Frame(indexName, frameName)
+			if f == nil {
+				http.Error(w, ErrFrameNotFound.Error(), http.StatusNotFound)
+				return
+			}
+
+			// Retrieve view.
+			view, err := f.CreateViewIfNotExists(viewName)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			// Retrieve fragment from frame.
+			frag, err := view.CreateFragmentIfNotExists(slice)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			err = frag.Merge(roaringBytes)
+			if err != nil {
+				fmt.Println("WHAT", err)
+
+				http.Error(w, "MergeFailed", http.StatusBadRequest)
+				return
+			}
+		} else {
+			//only correct node supported at this point
+			//forward(node.URI,q,roaringBytes)
+
+		}
+
+	}
+
 }

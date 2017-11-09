@@ -16,11 +16,14 @@
 package roaring
 
 import (
+	"bufio"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"hash/fnv"
 	"io"
+	"io/ioutil"
+	"os"
 	"sort"
 	"unsafe"
 )
@@ -2820,16 +2823,17 @@ type op struct {
 }
 
 // apply executes the operation against a bitmap.
-func (op *op) apply(b *Bitmap) bool {
+func (op *op) apply(b *Bitmap) (ret bool) {
+	ret = false
 	switch op.typ {
 	case opTypeAdd:
-		return b.add(op.value)
+		ret = b.add(op.value)
 	case opTypeRemove:
-		return b.remove(op.value)
+		ret = b.remove(op.value)
 	default:
 		panic(fmt.Sprintf("invalid op type: %d", op.typ))
 	}
-	return false
+	return
 }
 
 // WriteTo writes op to the w.
@@ -3360,4 +3364,48 @@ func xorBitmapRun(a, b *container) *container {
 		output.runToBitmap()
 	}
 	return output
+}
+
+func openBitmapFile(path string) (*Bitmap, error) {
+	bm := NewBitmap()
+
+	data, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := bm.UnmarshalBinary(data); err != nil {
+		return nil, fmt.Errorf("unmarshal storage: file=%s, err=%s", path, err)
+	}
+
+	return bm, nil
+}
+
+//MergeFiles will combine two roaring slice files into one
+func MergeBitmapFiles(src1, src2, resultFile string, optimize bool) (err error) {
+	b1, err := openBitmapFile(src1)
+	if err != nil {
+		return
+	}
+	b2, err := openBitmapFile(src2)
+	if err != nil {
+		return
+	}
+
+	b3 := b1.Union(b2)
+	if optimize {
+		b3.Optimize()
+	}
+	f, err := os.Create(resultFile)
+	defer f.Close()
+	if err != nil {
+		return
+	}
+	w := bufio.NewWriter(f)
+	_, err = b3.WriteTo(w)
+	if err != nil {
+		return
+	}
+	err = w.Flush()
+	return
 }

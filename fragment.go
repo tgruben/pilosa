@@ -1386,7 +1386,26 @@ func track(start time.Time, message string, stats StatsClient, logger *log.Logge
 	stats.Histogram("snapshot", elapsed.Seconds(), 1.0)
 }
 
+// Merge provides a fast path to combining lots of bits
+func (f *Fragment) Merge(roaringBytes []byte) error {
+	bm := roaring.NewBitmap()
+	if err := bm.UnmarshalBinary(roaringBytes); err != nil {
+		return err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	results := f.storage.Union(bm)
+	results.Optimize()
+	return snapshot(f, results)
+}
+
 func (f *Fragment) snapshot() error {
+	return snapshot(f, f.storage)
+}
+
+func snapshot(f *Fragment, bm *roaring.Bitmap) error {
+
 	logger := f.logger()
 	logger.Printf("fragment: snapshotting %s/%s/%s/%d", f.index, f.frame, f.view, f.slice)
 	completeMessage := fmt.Sprintf("fragment: snapshot complete %s/%s/%s/%d", f.index, f.frame, f.view, f.slice)
@@ -1403,7 +1422,7 @@ func (f *Fragment) snapshot() error {
 
 	// Write storage to snapshot.
 	bw := bufio.NewWriter(file)
-	if _, err := f.storage.WriteTo(bw); err != nil {
+	if _, err := bm.WriteTo(bw); err != nil {
 		return fmt.Errorf("snapshot write to: %s", err)
 	}
 
