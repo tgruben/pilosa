@@ -1908,3 +1908,58 @@ func byteSlicesEqual(a [][]byte) bool {
 func Pos(rowID, columnID uint64) uint64 {
 	return (rowID * SliceWidth) + (columnID % SliceWidth)
 }
+
+func (f *Fragment) FastImport(rowIDs, columnIDs []uint64) error {
+	// Verify that there are an equal number of row ids and column ids.
+	if len(rowIDs) != len(columnIDs) {
+		return fmt.Errorf("mismatch of row/column len: %d != %d", len(rowIDs), len(columnIDs))
+	}
+
+	// Disconnect op writer so we don't append updates.
+	localBitmap := roaring.NewBitmap()
+	// Process every bit.
+	// If an error occurs then reopen the storage.
+	lastID := uint64(0)
+	set := make(map[uint64]struct{})
+	for i := range rowIDs {
+		rowID, columnID := rowIDs[i], columnIDs[i]
+
+		// Determine the position of the bit in the storage.
+		pos, err := f.pos(rowID, columnID)
+		if err != nil {
+			return err
+		}
+
+		// Write to storage.
+		_, err = localBitmap.Add(pos)
+		if err != nil {
+			return err
+		}
+		// Reduce the StatsD rate for high volume stats
+		f.stats.Count("ImportBit", 1, 0.0001)
+		// import optimization to avoid linear foreach calls
+		// slight risk of concurrent cache counter being off but
+		// no real danger
+		if i == 0 || rowID != lastID {
+			lastID = rowID
+			set[rowID] = struct{}{}
+		}
+
+		// Invalidate block checksum.
+		delete(f.checksums, int(rowID/HashBlockSize))
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	// Update cache counts for all rows.
+	results := localBitmap.Union(f.storage)
+	for rowID := range set {
+		n := results.CountRange(rowID*SliceWidth, (rowID+1)*SliceWidth)
+		f.cache.BulkAdd(rowID, n)
+	}
+
+	f.cache.Invalidate()
+	return snapshot(f, localBitmap)
+
+}
