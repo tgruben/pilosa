@@ -101,6 +101,17 @@ func (b *Bitmap) Clone() *Bitmap {
 
 	return other
 }
+func (b *Bitmap) Unmmap() {
+	if b == nil {
+		return
+	}
+
+	for i := range b.containers {
+		b.containers[i].unmap()
+	}
+
+	return
+}
 
 // Add adds values to the bitmap.
 func (b *Bitmap) Add(a ...uint64) (changed bool, err error) {
@@ -391,24 +402,25 @@ func (b *Bitmap) Union(other *Bitmap) *Bitmap {
 
 	ki, ci := b.keys, b.containers
 	kj, cj := other.keys, other.containers
+	i, j := 0, 0
+	ni, nj := len(ki), len(kj)
 
 	for {
 		var key uint64
 		var container *container
 
-		ni, nj := len(ki), len(kj)
-		if ni == 0 && nj == 0 { // eof(i,j)
+		if ni == i && nj == j { // eof(i,j)
 			break
-		} else if ni == 0 || (nj != 0 && ki[0] > kj[0]) { // eof(i) or i > j
-			key, container = kj[0], cj[0].clone()
-			kj, cj = kj[1:], cj[1:]
-		} else if nj == 0 || (ki[0] < kj[0]) { // eof(j) or i < j
-			key, container = ki[0], ci[0].clone()
-			ki, ci = ki[1:], ci[1:]
-		} else { // i == j
-			key, container = ki[0], union(ci[0], cj[0])
-			ki, ci = ki[1:], ci[1:]
-			kj, cj = kj[1:], cj[1:]
+		} else if ni == i || (nj != j && ki[i] > kj[j]) { // eof(i) or i > j
+			key, container = kj[j], cj[j].clone()
+			j++
+		} else if nj == j || (ki[i] < kj[j]) { // eof(j) or i < j
+			key, container = ki[i], ci[i].clone()
+			i++
+		} else {
+			key, container = ki[i], union(ci[i], cj[j])
+			i++
+			j++
 		}
 
 		output.keys = append(output.keys, key)
@@ -975,12 +987,12 @@ const RunMaxSize = 2048
 // an array or RLE container is used, depending on the contents. For containers
 // with more than 4,096 values, the values are encoded into bitmaps.
 type container struct {
+	mapped         bool         // mapped directly to a byte slice when true
 	container_type byte         // array, bitmap, or run
 	n              int          // number of integers in container
 	array          []uint16     // used for array containers
 	bitmap         []uint64     // used for bitmap containers
 	runs           []interval16 // used for RLE containers
-	mapped         bool         // mapped directly to a byte slice when true
 }
 
 type interval16 struct {
@@ -1615,7 +1627,7 @@ func (c *container) runToArray() {
 
 // clone returns a copy of c.
 func (c *container) clone() *container {
-	other := &container{n: c.n, container_type: c.container_type}
+	other := &container{n: c.n, container_type: c.container_type, mapped: false}
 
 	if c.array != nil {
 		other.array = make([]uint16, len(c.array))

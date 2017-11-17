@@ -1917,6 +1917,7 @@ func (f *Fragment) FastImport(rowIDs, columnIDs []uint64) error {
 
 	// Disconnect op writer so we don't append updates.
 	localBitmap := roaring.NewBitmap()
+	localBitmap.OpWriter = nil
 	// Process every bit.
 	// If an error occurs then reopen the storage.
 	lastID := uint64(0)
@@ -1952,14 +1953,21 @@ func (f *Fragment) FastImport(rowIDs, columnIDs []uint64) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
+	f.storage.Unmmap()
 	// Update cache counts for all rows.
-	results := localBitmap.Union(f.storage)
+	var results *roaring.Bitmap
+	if f.storage.Count() > 0 {
+		results = f.storage.Union(localBitmap)
+	} else {
+		results = localBitmap
+	}
+
 	for rowID := range set {
 		n := results.CountRange(rowID*SliceWidth, (rowID+1)*SliceWidth)
 		f.cache.BulkAdd(rowID, n)
 	}
 
 	f.cache.Invalidate()
-	return snapshot(f, localBitmap)
+	return snapshot(f, results)
 
 }
