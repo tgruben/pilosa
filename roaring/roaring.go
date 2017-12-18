@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
+	"reflect"
 	"sort"
 	"unsafe"
 )
@@ -104,7 +105,9 @@ type Bitmap struct {
 
 // NewBitmap returns a Bitmap with an initial set of values.
 func NewBitmap(a ...uint64) *Bitmap {
-	b := &Bitmap{}
+	b := &Bitmap{
+		conts: NewSkipListContainers(),
+	}
 	b.Add(a...)
 	return b
 }
@@ -258,6 +261,7 @@ func (b *Bitmap) Slice() []uint64 {
 	var a []uint64
 	itr := b.Iterator()
 	itr.Seek(0)
+
 	for v, eof := itr.Next(); !eof; v, eof = itr.Next() {
 		a = append(a, v)
 	}
@@ -308,7 +312,7 @@ func (b *Bitmap) OffsetRange(offset, start, end uint64) *Bitmap {
 	off := highbits(offset)
 	hi0, hi1 := highbits(start), highbits(end)
 	citer, _ := b.conts.Iterator(hi0)
-	var other Bitmap
+	other := NewBitmap()
 	for citer.Next() {
 		k, c := citer.Value()
 		if k >= hi1 {
@@ -316,7 +320,7 @@ func (b *Bitmap) OffsetRange(offset, start, end uint64) *Bitmap {
 		}
 		other.conts.Put(off+(k-hi0), c)
 	}
-	return &other
+	return other
 }
 
 // container returns the container with the given key.
@@ -330,7 +334,7 @@ func (b *Bitmap) container(key uint64) *container {
 func (b *Bitmap) IntersectionCount(other *Bitmap) uint64 {
 	var n uint64
 	iiter, _ := b.conts.Iterator(0)
-	jiter, _ := b.conts.Iterator(0)
+	jiter, _ := other.conts.Iterator(0)
 	i, j := iiter.Next(), jiter.Next()
 	ki, ci := iiter.Value()
 	kj, cj := jiter.Value()
@@ -353,10 +357,10 @@ func (b *Bitmap) IntersectionCount(other *Bitmap) uint64 {
 
 // Intersect returns the intersection of b and other.
 func (b *Bitmap) Intersect(other *Bitmap) *Bitmap {
-	output := &Bitmap{}
+	output := NewBitmap()
 
 	iiter, _ := b.conts.Iterator(0)
-	jiter, _ := b.conts.Iterator(0)
+	jiter, _ := other.conts.Iterator(0)
 	i, j := iiter.Next(), jiter.Next()
 	ki, ci := iiter.Value()
 	kj, cj := jiter.Value()
@@ -379,19 +383,19 @@ func (b *Bitmap) Intersect(other *Bitmap) *Bitmap {
 
 // Union returns the bitwise union of b and other.
 func (b *Bitmap) Union(other *Bitmap) *Bitmap {
-	output := &Bitmap{}
+	output := NewBitmap()
 
 	iiter, _ := b.conts.Iterator(0)
-	jiter, _ := b.conts.Iterator(0)
+	jiter, _ := other.conts.Iterator(0)
 	i, j := iiter.Next(), jiter.Next()
 	ki, ci := iiter.Value()
 	kj, cj := jiter.Value()
 	for i || j {
-		if !j || ki < kj {
+		if i && (!j || ki < kj) {
 			output.conts.Put(ki, ci.clone())
 			i = iiter.Next()
 			ki, ci = iiter.Value()
-		} else if !i || ki > kj {
+		} else if j && (!i || ki > kj) {
 			output.conts.Put(kj, cj.clone())
 			j = jiter.Next()
 			kj, cj = jiter.Value()
@@ -407,19 +411,19 @@ func (b *Bitmap) Union(other *Bitmap) *Bitmap {
 
 // Difference returns the difference of b and other.
 func (b *Bitmap) Difference(other *Bitmap) *Bitmap {
-	output := &Bitmap{}
+	output := NewBitmap()
 
 	iiter, _ := b.conts.Iterator(0)
-	jiter, _ := b.conts.Iterator(0)
+	jiter, _ := other.conts.Iterator(0)
 	i, j := iiter.Next(), jiter.Next()
 	ki, ci := iiter.Value()
 	kj, cj := jiter.Value()
 	for i || j {
-		if !j || ki < kj {
+		if i && (!j || ki < kj) {
 			output.conts.Put(ki, ci.clone())
 			i = iiter.Next()
 			ki, ci = iiter.Value()
-		} else if !i || ki > kj {
+		} else if j && (!i || ki > kj) {
 			j = jiter.Next()
 			kj, cj = jiter.Value()
 		} else { // ki == kj
@@ -434,19 +438,19 @@ func (b *Bitmap) Difference(other *Bitmap) *Bitmap {
 
 // Xor returns the bitwise exclusive or of b and other.
 func (b *Bitmap) Xor(other *Bitmap) *Bitmap {
-	output := &Bitmap{}
+	output := NewBitmap()
 
 	iiter, _ := b.conts.Iterator(0)
-	jiter, _ := b.conts.Iterator(0)
+	jiter, _ := other.conts.Iterator(0)
 	i, j := iiter.Next(), jiter.Next()
 	ki, ci := iiter.Value()
 	kj, cj := jiter.Value()
 	for i || j {
-		if !j || ki < kj {
+		if i && (!j || ki < kj) {
 			output.conts.Put(ki, ci.clone())
 			i = iiter.Next()
 			ki, ci = iiter.Value()
-		} else if !i || ki > kj {
+		} else if j && (!i || ki > kj) {
 			output.conts.Put(kj, cj.clone())
 			j = jiter.Next()
 			kj, cj = jiter.Value()
@@ -792,7 +796,7 @@ type Iterator struct {
 // Seek moves to the first value equal to or greater than `seek`.
 func (itr *Iterator) Seek(seek uint64) {
 	// Move to the correct container.
-	itr.citer, _ = itr.bitmap.conts.Iterator(seek)
+	itr.citer, _ = itr.bitmap.conts.Iterator(highbits(seek))
 	if !itr.citer.Next() {
 		itr.c = nil
 		return // eof
@@ -848,7 +852,7 @@ func (itr *Iterator) Seek(seek uint64) {
 // Returns eof as true if there are no values left in the iterator.
 func (itr *Iterator) Next() (v uint64, eof bool) {
 	if itr.c == nil {
-		return
+		return 0, true
 	}
 	// Iterate over containers until we find the next value or EOF.
 	for {
@@ -3375,4 +3379,32 @@ func xorBitmapRun(a, b *container) *container {
 		output.runToBitmap()
 	}
 	return output
+}
+
+func BitmapsEqual(b, c *Bitmap) error {
+	if b.OpWriter != c.OpWriter {
+		return errors.New("opWriters not equal")
+	}
+	if b.opN != c.opN {
+		return errors.New("opNs not equal")
+	}
+
+	biter, _ := b.conts.Iterator(0)
+	citer, _ := c.conts.Iterator(0)
+	bn, cn := biter.Next(), citer.Next()
+	for ; bn && cn; bn, cn = biter.Next(), citer.Next() {
+		bk, bc := biter.Value()
+		ck, cc := citer.Value()
+		if bk != ck {
+			return errors.New("keys not equal")
+		}
+		if !reflect.DeepEqual(bc, cc) {
+			return errors.New("containers not equal")
+		}
+	}
+	if bn && !cn || cn && !bn {
+		return errors.New("different numbers of containers")
+	}
+
+	return nil
 }
