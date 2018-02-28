@@ -218,22 +218,27 @@ func (f *Fragment) openStorage() error {
 		if err != nil {
 			return err
 		}
+		f.file.Seek(0, 0)
 	}
 
 	// Mmap the underlying file so it can be zero copied.
-	storageData, err := syscall.Mmap(int(f.file.Fd()), 0, int(fi.Size()), syscall.PROT_READ, syscall.MAP_SHARED)
-	if err != nil {
-		return fmt.Errorf("mmap: %s", err)
-	}
-	f.storageData = storageData
+	/*
+		storageData, err := syscall.Mmap(int(f.file.Fd()), 0, int(fi.Size()), syscall.PROT_READ, syscall.MAP_SHARED)
+		if err != nil {
+			return fmt.Errorf("mmap: %s", err)
+		}
+		f.storageData = storageData
 
-	// Advise the kernel that the mmap is accessed randomly.
-	if err := madvise(f.storageData, syscall.MADV_RANDOM); err != nil {
-		return fmt.Errorf("madvise: %s", err)
-	}
+		// Advise the kernel that the mmap is accessed randomly.
+		if err := madvise(f.storageData, syscall.MADV_RANDOM); err != nil {
+			return fmt.Errorf("madvise: %s", err)
+		}
 
-	// Attach the mmap file to the bitmap.
-	data := f.storageData
+		// Attach the mmap file to the bitmap.
+		data := f.storageData
+	*/
+	data, err := ioutil.ReadAll(f.file)
+
 	if err := f.storage.UnmarshalBinary(data); err != nil {
 		return fmt.Errorf("unmarshal storage: file=%s, err=%s", f.file.Name(), err)
 	}

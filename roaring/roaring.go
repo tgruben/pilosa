@@ -726,7 +726,7 @@ func (b *Bitmap) UnmarshalBinary(data []byte) error {
 		opr.apply(b)
 
 		// Increase the op count.
-		b.opN++
+		//	b.opN++
 
 		// Move the buffer forward.
 		buf = buf[opr.size():]
@@ -745,7 +745,7 @@ func (b *Bitmap) writeOp(op *op) error {
 		return err
 	}
 
-	b.opN++
+	//	b.opN++
 	return nil
 }
 
