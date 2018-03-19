@@ -61,9 +61,9 @@ func TestFragment_SetBit(t *testing.T) {
 	if err := f.Reopen(); err != nil {
 		t.Fatal(err)
 	} else if n := f.Row(120).Count(); n != 2 {
-		t.Fatalf("unexpected count (reopen): %d", n)
+		t.Fatalf("unexpected count (reopen): %d Expected:2", n)
 	} else if n := f.Row(121).Count(); n != 1 {
-		t.Fatalf("unexpected count (reopen): %d", n)
+		t.Fatalf("unexpected count (reopen): %d Expected:1", n)
 	}
 }
 
@@ -872,7 +872,6 @@ func TestFragment_RankCache_Persistence(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-
 	// Verify correct cache type and size.
 	if cache, ok := f.Cache().(*pilosa.RankCache); !ok {
 		t.Fatalf("unexpected cache: %T", f.Cache())

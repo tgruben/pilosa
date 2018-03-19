@@ -112,7 +112,6 @@ func TestClient_MultiNode(t *testing.T) {
 			maxSlice = x
 		}
 	}
-
 	hldr[0].MustCreateRankedFragmentIfNotExists("i", "f", pilosa.ViewStandard, sliceNums[0]).MustSetBits(100, baseBit0+10)
 	hldr[0].MustCreateRankedFragmentIfNotExists("i", "f", pilosa.ViewStandard, sliceNums[0]).MustSetBits(4, baseBit0+10, baseBit0+11, baseBit0+12)
 	hldr[0].MustCreateRankedFragmentIfNotExists("i", "f", pilosa.ViewStandard, sliceNums[0]).MustSetBits(4, baseBit0+10, baseBit0+11, baseBit0+12, baseBit0+13, baseBit0+14, baseBit0+15)
@@ -234,7 +233,6 @@ func TestClient_Import(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-
 	// Verify data.
 	if a := f.Row(0).Bits(); !reflect.DeepEqual(a, []uint64{1, 5}) {
 		t.Fatalf("unexpected bits: %+v", a)

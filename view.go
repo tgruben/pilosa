@@ -139,18 +139,24 @@ func (v *View) openFragments() error {
 			continue
 		}
 
-		// Parse filename into integer.
-		slice, err := strconv.ParseUint(filepath.Base(fi.Name()), 10, 64)
-		if err != nil {
-			continue
-		}
+		parts := strings.Split(filepath.Base(fi.Name()), ".")
+		if len(parts) == 3 && parts[2] == "page" {
+			// Parse filename into integer.//this is to check files that are just a slice
+			slice, err := strconv.ParseUint(parts[0], 10, 64)
+			if err != nil {
+				continue
+			}
 
-		frag := v.newFragment(v.FragmentPath(slice), slice)
-		if err := frag.Open(); err != nil {
-			return fmt.Errorf("open fragment: slice=%d, err=%s", frag.Slice(), err)
+			_, exists := v.fragments[slice]
+			if !exists {
+				frag := v.newFragment(v.FragmentPath(slice), slice)
+				if err := frag.Open(); err != nil {
+					return fmt.Errorf("open fragment: slice=%d, err=%s", frag.Slice(), err)
+				}
+				frag.RowAttrStore = v.RowAttrStore
+				v.fragments[frag.Slice()] = frag
+			}
 		}
-		frag.RowAttrStore = v.RowAttrStore
-		v.fragments[frag.Slice()] = frag
 	}
 
 	return nil

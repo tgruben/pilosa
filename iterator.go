@@ -16,8 +16,6 @@ package pilosa
 
 import (
 	"fmt"
-
-	"github.com/pilosa/pilosa/roaring"
 )
 
 // Iterator is an interface for looping over row/column pairs.
@@ -173,11 +171,11 @@ func (itr *SliceIterator) Next() (rowID, columnID uint64, eof bool) {
 
 // RoaringIterator converts a roaring.Iterator to output column/row pairs.
 type RoaringIterator struct {
-	itr *roaring.Iterator
+	itr BitIterator
 }
 
 // NewRoaringIterator returns a new iterator wrapping itr.
-func NewRoaringIterator(itr *roaring.Iterator) *RoaringIterator {
+func NewRoaringIterator(itr BitIterator) *RoaringIterator {
 	return &RoaringIterator{itr: itr}
 }
 

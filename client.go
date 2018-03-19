@@ -742,7 +742,6 @@ func (c *InternalHTTPClient) RestoreFrom(ctx context.Context, r io.Reader, index
 		} else if err != nil {
 			return err
 		}
-
 		// Parse slice from entry name.
 		slice, err := strconv.ParseUint(hdr.Name, 10, 64)
 		if err != nil {
@@ -769,7 +768,6 @@ func (c *InternalHTTPClient) restoreSliceFrom(ctx context.Context, buf []byte, i
 	if err != nil {
 		return fmt.Errorf("slice nodes: %s", err)
 	}
-
 	// Restore slice to each owner.
 	for _, node := range nodes {
 		u := nodePathToURL(node, "/fragment/data")

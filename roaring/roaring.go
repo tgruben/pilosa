@@ -838,6 +838,9 @@ type Iterator struct {
 // eof returns true if the iterator is at the end of the bitmap.
 func (itr *Iterator) eof() bool { return itr.i >= len(itr.bitmap.containers) }
 
+// Peek returns reference to underlying Bitmap
+func (itr *Iterator) Peek() *Bitmap { return itr.bitmap }
+
 // Seek moves to the first value equal to or greater than `seek`.
 func (itr *Iterator) Seek(seek uint64) {
 	// k should always be -1 unless we're seeking into a run container. Then the

@@ -16,7 +16,6 @@ package pilosa
 
 import (
 	"archive/tar"
-	"bufio"
 	"bytes"
 	"container/heap"
 	"context"
@@ -42,7 +41,6 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/pilosa/pilosa/internal"
 	"github.com/pilosa/pilosa/pql"
-	"github.com/pilosa/pilosa/roaring"
 )
 
 const (
@@ -77,16 +75,12 @@ type Fragment struct {
 	view  string
 	slice uint64
 
-	// File-backed storage
-	path        string
-	file        *os.File
-	storage     *roaring.Bitmap
-	storageData []byte
-	opN         int // number of ops since snapshot
+	storage StorageBackend
 
 	// Cache for row counts.
 	CacheType string // passed in by frame
 	cache     Cache
+	cachePath string
 	CacheSize uint32
 
 	// Stats reporting.
@@ -116,7 +110,8 @@ type Fragment struct {
 // NewFragment returns a new instance of Fragment.
 func NewFragment(path, index, frame, view string, slice uint64) *Fragment {
 	return &Fragment{
-		path:      path,
+		//storage: NewFileStorage(path, slice),
+		storage:   NewPagedStorage(path, slice),
 		index:     index,
 		frame:     frame,
 		view:      view,
@@ -127,15 +122,13 @@ func NewFragment(path, index, frame, view string, slice uint64) *Fragment {
 		LogOutput: ioutil.Discard,
 		MaxOpN:    DefaultFragmentMaxOpN,
 
-		stats: NopStatsClient,
+		stats:     NopStatsClient,
+		cachePath: path + CacheExt,
 	}
 }
 
-// Path returns the path the fragment was initialized with.
-func (f *Fragment) Path() string { return f.path }
-
 // CachePath returns the path to the fragment's cache data.
-func (f *Fragment) CachePath() string { return f.path + CacheExt }
+func (f *Fragment) CachePath() string { return f.cachePath }
 
 // Index returns the index that the fragment was initialized with.
 func (f *Fragment) Index() string { return f.index }
@@ -160,10 +153,10 @@ func (f *Fragment) Open() error {
 
 	if err := func() error {
 		// Initialize storage in a function so we can close if anything goes wrong.
-		if err := f.openStorage(); err != nil {
+		if err := f.storage.Open(); err != nil {
 			return err
 		}
-
+		f.resetCache()
 		// Fill cache with rows persisted to disk.
 		if err := f.openCache(); err != nil {
 			return err
@@ -186,69 +179,8 @@ func (f *Fragment) Open() error {
 	return nil
 }
 
-// openStorage opens the storage bitmap.
-func (f *Fragment) openStorage() error {
-	// Create a roaring bitmap to serve as storage for the slice.
-	if f.storage == nil {
-		f.storage = roaring.NewBitmap()
-	}
-	// Open the data file to be mmap'd and used as an ops log.
-	file, err := os.OpenFile(f.path, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		return fmt.Errorf("open file: %s", err)
-	}
-	f.file = file
-
-	// Lock the underlying file.
-	if err := syscall.Flock(int(f.file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		return fmt.Errorf("flock: %s", err)
-	}
-
-	// If the file is empty then initialize it with an empty bitmap.
-	fi, err := f.file.Stat()
-	if err != nil {
-		return err
-	} else if fi.Size() == 0 {
-		bi := bufio.NewWriter(f.file)
-		if _, err := f.storage.WriteTo(bi); err != nil {
-			return fmt.Errorf("init storage file: %s", err)
-		}
-		bi.Flush()
-		fi, err = f.file.Stat()
-		if err != nil {
-			return err
-		}
-		f.file.Seek(0, 0)
-	}
-
-	// Mmap the underlying file so it can be zero copied.
-	/*
-		storageData, err := syscall.Mmap(int(f.file.Fd()), 0, int(fi.Size()), syscall.PROT_READ, syscall.MAP_SHARED)
-		if err != nil {
-			return fmt.Errorf("mmap: %s", err)
-		}
-		f.storageData = storageData
-
-		// Advise the kernel that the mmap is accessed randomly.
-		if err := madvise(f.storageData, syscall.MADV_RANDOM); err != nil {
-			return fmt.Errorf("madvise: %s", err)
-		}
-
-		// Attach the mmap file to the bitmap.
-		data := f.storageData
-	*/
-	data, err := ioutil.ReadAll(f.file)
-
-	if err := f.storage.UnmarshalBinary(data); err != nil {
-		return fmt.Errorf("unmarshal storage: file=%s, err=%s", f.file.Name(), err)
-	}
-
-	// Attach the file to the bitmap to act as a write-ahead log.
-	f.storage.OpWriter = f.file
+func (f *Fragment) resetCache() {
 	f.rowCache = &SimpleCache{make(map[uint64]*Bitmap)}
-
-	return nil
-
 }
 
 // openCache initializes the cache from row ids persisted to disk.
@@ -284,7 +216,7 @@ func (f *Fragment) openCache() error {
 	// Read in all rows by ID.
 	// This will cause them to be added to the cache.
 	for _, id := range pb.IDs {
-		n := f.storage.CountRange(id*SliceWidth, (id+1)*SliceWidth)
+		n := f.storage.Count(id)
 		f.cache.BulkAdd(id, n)
 	}
 	f.cache.Invalidate()
@@ -302,47 +234,18 @@ func (f *Fragment) Close() error {
 func (f *Fragment) close() error {
 	// Flush cache if closing gracefully.
 	if err := f.flushCache(); err != nil {
-		f.logger().Printf("fragment: error flushing cache on close: err=%s, path=%s", err, f.path)
+		f.logger().Printf("fragment: error flushing cache on close: err=%s, path=%s", err, f.cachePath)
 		return err
 	}
 
 	// Close underlying storage.
-	if err := f.closeStorage(); err != nil {
-		f.logger().Printf("fragment: error closing storage: err=%s, path=%s", err, f.path)
+	if err := f.storage.Close(); err != nil {
+		f.logger().Printf("fragment: error closing storage: err=%s ", err)
 		return err
 	}
 
 	// Remove checksums.
 	f.checksums = nil
-
-	return nil
-}
-
-func (f *Fragment) closeStorage() error {
-	// Clear the storage bitmap so it doesn't access the closed mmap.
-
-	//f.storage = roaring.NewBitmap()
-
-	// Unmap the file.
-	if f.storageData != nil {
-		if err := syscall.Munmap(f.storageData); err != nil {
-			return fmt.Errorf("munmap: %s", err)
-		}
-		f.storageData = nil
-	}
-
-	// Flush file, unlock & close.
-	if f.file != nil {
-		if err := f.file.Sync(); err != nil {
-			return fmt.Errorf("sync: %s", err)
-		}
-		if err := syscall.Flock(int(f.file.Fd()), syscall.LOCK_UN); err != nil {
-			return fmt.Errorf("unlock: %s", err)
-		}
-		if err := f.file.Close(); err != nil {
-			return fmt.Errorf("close file: %s", err)
-		}
-	}
 
 	return nil
 }
@@ -364,23 +267,7 @@ func (f *Fragment) row(rowID uint64, checkRowCache bool, updateRowCache bool) *B
 			return r
 		}
 	}
-
-	// Only use a subset of the containers.
-	// NOTE: The start & end ranges must be divisible by
-	data := f.storage.OffsetRange(f.slice*SliceWidth, rowID*SliceWidth, (rowID+1)*SliceWidth)
-
-	// Reference bitmap subrange in storage.
-	// We Clone() data because otherwise bm will contains pointers to containers in storage.
-	// This causes unexpected results when we cache the row and try to use it later.
-	bm := &Bitmap{
-		segments: []BitmapSegment{{
-			data:     *data.Clone(),
-			slice:    f.slice,
-			writable: false,
-		}},
-	}
-	bm.InvalidateCount()
-
+	bm := f.storage.Row(rowID)
 	if updateRowCache {
 		f.rowCache.Add(rowID, bm)
 	}
@@ -416,11 +303,6 @@ func (f *Fragment) setBit(rowID, columnID uint64) (changed bool, err error) {
 
 	// Invalidate block checksum.
 	delete(f.checksums, int(rowID/HashBlockSize))
-
-	// Increment number of operations until snapshot is required.
-	if err := f.incrementOpN(); err != nil {
-		return false, err
-	}
 
 	// Get the row from row cache or fragment.storage.
 	bm := f.row(rowID, true, true)
@@ -461,18 +343,12 @@ func (f *Fragment) clearBit(rowID, columnID uint64) (changed bool, err error) {
 		return false, err
 	}
 
-	// Don't update the cache if nothing changed.
 	if !changed {
 		return changed, nil
 	}
 
 	// Invalidate block checksum.
 	delete(f.checksums, int(rowID/HashBlockSize))
-
-	// Increment number of operations until snapshot is required.
-	if err := f.incrementOpN(); err != nil {
-		return false, err
-	}
 
 	// Get the row from cache or fragment.storage.
 	bm := f.row(rowID, true, true)
@@ -802,13 +678,13 @@ func (f *Fragment) FieldRangeBetween(bitDepth uint, predicateMin, predicateMax u
 }
 
 // pos translates the row ID and column ID into a position in the storage bitmap.
-func (f *Fragment) pos(rowID, columnID uint64) (uint64, error) {
+func (f *Fragment) pos(rowID, columnID uint64) (*Position, error) {
 	// Return an error if the column ID is out of the range of the fragment's slice.
 	minColumnID := f.slice * SliceWidth
 	if columnID < minColumnID || columnID >= minColumnID+SliceWidth {
-		return 0, errors.New("column out of bounds")
+		return nil, errors.New("column out of bounds")
 	}
-	return Pos(rowID, columnID), nil
+	return &Position{rowID, columnID}, nil
 }
 
 // ForEachBit executes fn for every bit set in the fragment.
@@ -817,17 +693,7 @@ func (f *Fragment) ForEachBit(fn func(rowID, columnID uint64) error) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	var err error
-	f.storage.ForEach(func(i uint64) {
-		// Skip if an error has already occurred.
-		if err != nil {
-			return
-		}
-
-		// Invoke caller's function.
-		err = fn(i/SliceWidth, (f.slice*SliceWidth)+(i%SliceWidth))
-	})
-	return err
+	return f.storage.ForEachBit(fn)
 }
 
 // Top returns the top rows from the fragment.
@@ -1053,7 +919,6 @@ func (f *Fragment) Blocks() []FragmentBlock {
 	defer f.mu.Unlock()
 
 	var a []FragmentBlock
-
 	// Initialize the iterator.
 	itr := f.storage.Iterator()
 	itr.Seek(0)
@@ -1133,11 +998,7 @@ func (f *Fragment) BlockData(id int) (rowIDs, columnIDs []uint64) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.storage.ForEachRange(uint64(id)*HashBlockSize*SliceWidth, (uint64(id)+1)*HashBlockSize*SliceWidth, func(i uint64) {
-		rowIDs = append(rowIDs, i/SliceWidth)
-		columnIDs = append(columnIDs, i%SliceWidth)
-	})
-	return
+	return f.storage.BlockData(id)
 }
 
 // MergeBlock compares the block's bits and computes a diff with another set of block bits.
@@ -1275,9 +1136,10 @@ func (f *Fragment) Import(rowIDs, columnIDs []uint64) error {
 	if len(rowIDs) != len(columnIDs) {
 		return fmt.Errorf("mismatch of row/column len: %d != %d", len(rowIDs), len(columnIDs))
 	}
-
+	f.resetCache()
 	// Disconnect op writer so we don't append updates.
-	f.storage.OpWriter = nil
+	//f.storage.OpWriter = nil
+	//need to signal storage that bulk is about to begin
 
 	// Process every bit.
 	// If an error occurs then reopen the storage.
@@ -1323,13 +1185,13 @@ func (f *Fragment) Import(rowIDs, columnIDs []uint64) error {
 		f.cache.Invalidate()
 		return nil
 	}(); err != nil {
-		_ = f.closeStorage()
-		_ = f.openStorage()
+		_ = f.storage.Close()
+		_ = f.storage.Open()
 		return err
 	}
 
 	// Write the storage to disk and reload.
-	if err := f.snapshot(); err != nil {
+	if err := f.storage.Flush(); err != nil {
 		return err
 	}
 
@@ -1345,7 +1207,7 @@ func (f *Fragment) ImportValue(columnIDs, values []uint64, bitDepth uint) error 
 		return fmt.Errorf("mismatch of column/value len: %d != %d", len(columnIDs), len(values))
 	}
 
-	f.storage.OpWriter = nil
+	//	f.storage.OpWriter = nil
 	// Process every value.
 	// If an error occurs then reopen the storage.
 	if err := func() error {
@@ -1359,85 +1221,13 @@ func (f *Fragment) ImportValue(columnIDs, values []uint64, bitDepth uint) error 
 		}
 		return nil
 	}(); err != nil {
-		_ = f.closeStorage()
-		_ = f.openStorage()
+		_ = f.storage.Close()
+		_ = f.storage.Open()
 		return err
 	}
-	if err := f.snapshot(); err != nil {
+	if err := f.storage.Flush(); err != nil {
 		return err
 	}
-	return nil
-}
-
-// incrementOpN increase the operation count by one.
-// If the count exceeds the maximum allowed then a snapshot is performed.
-func (f *Fragment) incrementOpN() error {
-	f.opN++
-	if f.opN <= f.MaxOpN {
-		return nil
-	}
-
-	if err := f.snapshot(); err != nil {
-		return fmt.Errorf("snapshot: %s", err)
-	}
-	return nil
-}
-
-// Snapshot writes the storage bitmap to disk and reopens it.
-func (f *Fragment) Snapshot() error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.snapshot()
-}
-func track(start time.Time, message string, stats StatsClient, logger *log.Logger) {
-	elapsed := time.Since(start)
-	logger.Printf("%s took %s", message, elapsed)
-	stats.Histogram("snapshot", elapsed.Seconds(), 1.0)
-}
-
-func (f *Fragment) snapshot() error {
-	logger := f.logger()
-	logger.Printf("fragment: snapshotting %s/%s/%s/%d", f.index, f.frame, f.view, f.slice)
-	completeMessage := fmt.Sprintf("fragment: snapshot complete %s/%s/%s/%d", f.index, f.frame, f.view, f.slice)
-	start := time.Now()
-	defer track(start, completeMessage, f.stats, logger)
-
-	// Create a temporary file to snapshot to.
-	snapshotPath := f.path + SnapshotExt
-	file, err := os.Create(snapshotPath)
-	if err != nil {
-		return fmt.Errorf("create snapshot file: %s", err)
-	}
-	defer file.Close()
-
-	// Write storage to snapshot.
-	bw := bufio.NewWriter(file)
-	if _, err := f.storage.WriteTo(bw); err != nil {
-		return fmt.Errorf("snapshot write to: %s", err)
-	}
-
-	if err := bw.Flush(); err != nil {
-		return fmt.Errorf("flush: %s", err)
-	}
-
-	// Close current storage.
-	if err := f.closeStorage(); err != nil {
-		return fmt.Errorf("close storage: %s", err)
-	}
-
-	// Move snapshot to data file location.
-	if err := os.Rename(snapshotPath, f.path); err != nil {
-		return fmt.Errorf("rename snapshot: %s", err)
-	}
-
-	// Reopen storage.
-	if err := f.openStorage(); err != nil {
-		return fmt.Errorf("open storage: %s", err)
-	}
-
-	// Reset operation count.
-	f.opN = 0
-
 	return nil
 }
 
@@ -1496,47 +1286,7 @@ func (f *Fragment) WriteTo(w io.Writer) (n int64, err error) {
 }
 
 func (f *Fragment) writeStorageToArchive(tw *tar.Writer) error {
-	// Open separate file descriptor to read from.
-	file, err := os.Open(f.path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	// Retrieve the current file size under lock so we don't read
-	// while an operation is appending to the end.
-	var sz int64
-	if err := func() error {
-		f.mu.Lock()
-		defer f.mu.Unlock()
-
-		fi, err := file.Stat()
-		if err != nil {
-			return err
-		}
-		sz = fi.Size()
-
-		return nil
-	}(); err != nil {
-		return err
-	}
-
-	// Write archive header.
-	if err := tw.WriteHeader(&tar.Header{
-		Name:    "data",
-		Mode:    0600,
-		Size:    sz,
-		ModTime: time.Now(),
-	}); err != nil {
-		return err
-	}
-
-	// Copy the file up to the last known size.
-	// This is done outside the lock because the storage format is append-only.
-	if _, err := io.CopyN(tw, file, sz); err != nil {
-		return err
-	}
-	return nil
+	return f.storage.WriteToArchive(tw)
 }
 
 func (f *Fragment) writeCacheToArchive(tw *tar.Writer) error {
@@ -1584,9 +1334,9 @@ func (f *Fragment) ReadFrom(r io.Reader) (n int64, err error) {
 		}
 
 		// Process file based on file name.
-		switch hdr.Name {
-		case "data":
-			if err := f.readStorageFromArchive(tr); err != nil {
+		switch hdr.Name[len(hdr.Name)-5:] {
+		case ".page":
+			if err := f.readStorageFromArchive(tr, hdr.Name); err != nil {
 				return 0, err
 			}
 		case "cache":
@@ -1601,36 +1351,8 @@ func (f *Fragment) ReadFrom(r io.Reader) (n int64, err error) {
 	return 0, nil
 }
 
-func (f *Fragment) readStorageFromArchive(r io.Reader) error {
-	// Create a temporary file to copy into.
-	path := f.path + CopyExt
-	file, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	// Copy reader into temporary path.
-	if _, err = io.Copy(file, r); err != nil {
-		return err
-	}
-
-	// Close current storage.
-	if err := f.closeStorage(); err != nil {
-		return err
-	}
-
-	// Move snapshot to data file location.
-	if err := os.Rename(path, f.path); err != nil {
-		return err
-	}
-
-	// Reopen storage.
-	if err := f.openStorage(); err != nil {
-		return err
-	}
-
-	return nil
+func (f *Fragment) readStorageFromArchive(r io.Reader, path string) error {
+	return f.storage.ReadFromArchive(r, path)
 }
 
 func (f *Fragment) readCacheFromArchive(r io.Reader) error {
@@ -1784,6 +1506,15 @@ func (s *FragmentSyncer) SyncFragment() error {
 	return nil
 }
 
+func (f *Fragment) Path() string {
+	return f.storage.Path()
+}
+func (f *Fragment) Snapshot() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.storage.Flush()
+}
+
 // syncBlock sends and receives all rows for a given block.
 // Returns an error if any remote hosts are unreachable.
 func (s *FragmentSyncer) syncBlock(id int) error {
@@ -1903,9 +1634,4 @@ func byteSlicesEqual(a [][]byte) bool {
 		}
 	}
 	return true
-}
-
-// Pos returns the row position of a row/column pair.
-func Pos(rowID, columnID uint64) uint64 {
-	return (rowID * SliceWidth) + (columnID % SliceWidth)
 }
