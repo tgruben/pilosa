@@ -893,15 +893,21 @@ type ppi struct {
 // product generates the cartesian product of the input
 // using tail recursion.
 func product(input [][]gbi) []ppi {
-	if len(input) == 0 { // base return empty list
-		return []ppi{
-			{gl: GroupLine{Groups: make([]FieldRow, 0)}},
-		}
-	}
-
 	res := make([]ppi, 0)
-	head := input[0]           // take first element of the list
-	tail := product(input[1:]) // invoke product on remaining element
+	if len(input) == 0 { //base return empty list
+		res = append(res, ppi{gl: GroupLine{Groups: make([]FieldRow, 0)}})
+	} else {
+		res = productHelper(input, res)
+	}
+	return res
+}
+
+// NOTE: this helper function improves the performance of the
+// the tail recursion step. Do not refactor this function by
+// incorporating it into the `product()` function.
+func productHelper(lists [][]gbi, res []ppi) []ppi {
+	head := lists[0]           // take first element of the list
+	tail := product(lists[1:]) // invoke product on remaining element
 	for h := range head {      // for each head
 		for t := range tail { // iterate over the tail
 			s := ppi{gl: GroupLine{Groups: make([]FieldRow, 0)}}
