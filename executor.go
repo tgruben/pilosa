@@ -773,7 +773,6 @@ func uniqueGroupString(fr []FieldRow) string {
 type gbi struct {
 	row      *Row
 	fieldRow FieldRow
-	rowID    uint64
 }
 
 type GroupLine struct {
@@ -864,8 +863,7 @@ func (e *executor) executeGroupByShard(ctx context.Context, index string, c *pql
 		set := make([]gbi, 0)
 		for _, rowID := range frag.rowsWithFilter(filter) {
 			set = append(set, gbi{
-				row:   frag.row(rowID),
-				rowID: rowID,
+				row: frag.row(rowID),
 				fieldRow: FieldRow{
 					Field: fieldName,
 					RowID: rowID,
@@ -893,21 +891,15 @@ type ppi struct {
 // product generates the cartesian product of the input
 // using tail recursion.
 func product(input [][]gbi) []ppi {
-	res := make([]ppi, 0)
-	if len(input) == 0 { //base return empty list
-		res = append(res, ppi{gl: GroupLine{Groups: make([]FieldRow, 0)}})
-	} else {
-		res = productHelper(input, res)
+	if len(input) == 0 { // base return empty list
+		return []ppi{
+			{gl: GroupLine{Groups: make([]FieldRow, 0)}},
+		}
 	}
-	return res
-}
 
-// NOTE: this helper function improves the performance of the
-// the tail recursion step. Do not refactor this function by
-// incorporating it into the `product()` function.
-func productHelper(lists [][]gbi, res []ppi) []ppi {
-	head := lists[0]           // take first element of the list
-	tail := product(lists[1:]) // invoke product on remaining element
+	res := make([]ppi, 0)
+	head := input[0]           // take first element of the list
+	tail := product(input[1:]) // invoke product on remaining element
 	for h := range head {      // for each head
 		for t := range tail { // iterate over the tail
 			s := ppi{gl: GroupLine{Groups: make([]FieldRow, 0)}}
