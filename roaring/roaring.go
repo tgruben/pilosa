@@ -2144,7 +2144,6 @@ func intersectBitmapBitmap(a, b *Container) *Container {
 		output.n += int(popcount(v))
 
 	}
-	output.optimize()
 	return output
 }
 
