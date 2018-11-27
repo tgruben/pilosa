@@ -65,6 +65,7 @@ var (
 	ErrNotImplemented            = errors.New("not implemented")
 	ErrFieldsArgumentRequired    = errors.New("fields argument required")
 	ErrExpectedFieldListArgument = errors.New("expected field list argument")
+	ErrMutationOnReadOnly        = errors.New("mutation failed, cluster read-only")
 )
 
 // apiMethodNotAllowedError wraps an error value indicating that a particular

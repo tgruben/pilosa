@@ -87,6 +87,9 @@ func (e *executor) Execute(ctx context.Context, index string, q *pql.Query, shar
 
 	resp := QueryResponse{}
 
+	if opt.ReadOnly && isMutation(q.Calls){
+		return resp, ErrMutationOnReadOnly
+	}
 	// Verify that an index is set.
 	if index == "" {
 		return resp, ErrIndexRequired
@@ -2570,6 +2573,7 @@ type execOptions struct {
 	ExcludeRowAttrs bool
 	ExcludeColumns  bool
 	ColumnAttrs     bool
+	ReadOnly        bool
 }
 
 // hasOnlySetRowAttrs returns true if calls only contains SetRowAttrs() calls.
@@ -2584,6 +2588,21 @@ func hasOnlySetRowAttrs(calls []*pql.Call) bool {
 		}
 	}
 	return true
+}
+
+func isMutation(calls []*pql.Call) bool {
+	if len(calls) == 0 {
+		return false
+	}
+	for _, call := range calls {
+		switch call.Name {
+		case "Clear", "Set", "SetRowAttrs", "SetColumnAttrs":
+			return true
+		default:
+			continue
+		}
+	}
+	return false
 }
 
 func needsShards(calls []*pql.Call) bool {

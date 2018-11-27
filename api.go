@@ -113,9 +113,10 @@ func (api *API) Query(ctx context.Context, req *QueryRequest) (QueryResponse, er
 	}
 	execOpts := &execOptions{
 		Remote:          req.Remote,
-		ExcludeRowAttrs: req.ExcludeRowAttrs, // NOTE: Kept for Pilosa 1.x compat.
-		ExcludeColumns:  req.ExcludeColumns,  // NOTE: Kept for Pilosa 1.x compat.
-		ColumnAttrs:     req.ColumnAttrs,     // NOTE: Kept for Pilosa 1.x compat.
+		ExcludeRowAttrs: req.ExcludeRowAttrs,                         // NOTE: Kept for Pilosa 1.x compat.
+		ExcludeColumns:  req.ExcludeColumns,                          // NOTE: Kept for Pilosa 1.x compat.
+		ColumnAttrs:     req.ColumnAttrs,                             // NOTE: Kept for Pilosa 1.x compat.
+		ReadOnly:        api.cluster.State() == ClusterStateResizing, // Look to enhance if more states required
 	}
 	resp, err := api.server.executor.Execute(ctx, req.Index, q, req.Shards, execOpts)
 	if err != nil {
@@ -1205,6 +1206,7 @@ var methodsCommon = map[apiMethod]struct{}{
 
 var methodsResizing = map[apiMethod]struct{}{
 	apiResizeAbort: {},
+	apiQuery:       {},
 }
 
 var methodsNormal = map[apiMethod]struct{}{
