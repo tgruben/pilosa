@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -126,7 +127,18 @@ func (v *view) openFragments() error {
 		return errors.Wrap(err, "reading fragments directory")
 	}
 
+	fragQueue := make(chan struct{}, runtime.NumCPU())
+	var wg sync.WaitGroup
+	var busy sync.Mutex
+	var anyErr error
+
 	for _, fi := range fis {
+		busy.Lock()
+		if anyErr != nil {
+			busy.Unlock()
+			break
+		}
+		busy.Unlock()
 		if fi.IsDir() {
 			continue
 		}
@@ -138,17 +150,33 @@ func (v *view) openFragments() error {
 			continue
 		}
 
+		fragQueue <- struct{}{}
+		wg.Add(1)
 		v.logger.Debugf("open index/field/view/fragment: %s/%s/%s/%d", v.index, v.field, v.name, shard)
-		frag := v.newFragment(v.fragmentPath(shard), shard)
-		if err := frag.Open(); err != nil {
-			return fmt.Errorf("open fragment: shard=%d, err=%s", frag.shard, err)
-		}
-		frag.RowAttrStore = v.rowAttrStore
-		v.logger.Debugf("add index/field/view/fragment to view.fragments: %s/%s/%s/%d", v.index, v.field, v.name, shard)
-		v.fragments[frag.shard] = frag
+		go func() {
+			defer func() {
+				<-fragQueue
+				wg.Done()
+			}()
+			frag := v.newFragment(v.fragmentPath(shard), shard)
+			if err := frag.Open(); err != nil {
+				busy.Lock()
+				if anyErr == nil {
+					anyErr = fmt.Errorf("open fragment: shard=%d, err=%s", frag.shard, err)
+				}
+				busy.Unlock()
+				return
+			}
+			frag.RowAttrStore = v.rowAttrStore
+			v.logger.Debugf("add index/field/view/fragment to view.fragments: %s/%s/%s/%d", v.index, v.field, v.name, shard)
+			busy.Lock()
+			v.fragments[frag.shard] = frag
+			busy.Unlock()
+		}()
 	}
+	wg.Wait()
 
-	return nil
+	return anyErr
 }
 
 // close closes the view and its fragments.
