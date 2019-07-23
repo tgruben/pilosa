@@ -29,6 +29,32 @@ import (
 // Server is global so that tests can control and verify it.
 var Server *server.Command
 
+// newHolderCmd creates a pilosa server for just long enough to open the
+// holder, then shuts it down again.
+func newHolderCmd(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
+	Server = server.NewCommand(stdin, stdout, stderr)
+	serveCmd := &cobra.Command{
+		Use:   "holder",
+		Short: "Load Pilosa.",
+		Long: `pilosa holder starts (and immediately stops) Pilosa.
+
+It opens the data directory and loads it, then shuts down immediately.
+This is only useful for diagnostic use.
+`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Start & run the server.
+			if err := Server.UpAndDown(); err != nil {
+				return errors.Wrap(err, "running server")
+			}
+			return nil
+		},
+	}
+
+	// Attach flags to the command.
+	ctl.BuildServerFlags(serveCmd, Server)
+	return serveCmd
+}
+
 // newServeCmd creates a pilosa server and runs it with command line flags.
 func newServeCmd(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	Server = server.NewCommand(stdin, stdout, stderr)
