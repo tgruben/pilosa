@@ -112,6 +112,8 @@ func (v *view) open() error {
 	return nil
 }
 
+var workQueue = make(chan struct{}, runtime.NumCPU()*2)
+
 // openFragments opens and initializes the fragments inside the view.
 func (v *view) openFragments() error {
 	file, err := os.Open(filepath.Join(v.path, "fragments"))
@@ -127,7 +129,6 @@ func (v *view) openFragments() error {
 		return errors.Wrap(err, "reading fragments directory")
 	}
 
-	fragQueue := make(chan struct{}, runtime.NumCPU())
 	var wg sync.WaitGroup
 	var busy sync.Mutex
 	var anyErr error
@@ -150,12 +151,12 @@ func (v *view) openFragments() error {
 			continue
 		}
 
-		fragQueue <- struct{}{}
+		workQueue <- struct{}{}
 		wg.Add(1)
 		v.logger.Debugf("open index/field/view/fragment: %s/%s/%s/%d", v.index, v.field, v.name, shard)
 		go func() {
 			defer func() {
-				<-fragQueue
+				<-workQueue
 				wg.Done()
 			}()
 			frag := v.newFragment(v.fragmentPath(shard), shard)
@@ -185,14 +186,28 @@ func (v *view) close() error {
 	defer v.mu.Unlock()
 
 	// Close all fragments.
+	var anyErr error
+	var busy sync.Mutex
+	var wg sync.WaitGroup
 	for _, frag := range v.fragments {
-		if err := frag.Close(); err != nil {
-			return errors.Wrap(err, "closing fragment")
-		}
-	}
-	v.fragments = make(map[uint64]*fragment)
+		workQueue <- struct{}{}
+		wg.Add(1)
+		go func() {
+			defer func() {
+				<-workQueue
+				wg.Done()
+			}()
 
-	return nil
+			if err := frag.Close(); err != nil {
+				busy.Lock()
+				anyErr = errors.Wrap(err, "closing fragment")
+				busy.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	v.fragments = make(map[uint64]*fragment)
+	return anyErr
 }
 
 // flags returns a set of flags for the underlying fragments.
