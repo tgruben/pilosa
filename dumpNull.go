@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"time"
 )
 
@@ -66,6 +67,8 @@ func (ml *Migrater) Migrate() {
 	progress := 0
 	startingTime := time.Now().UTC()
 	buff := make([]byte, 8)
+	runtime.LockOSThread()
+	defer runtime.LockOSThread()
 	for _, index := range ml.holder.indexes {
 		ml.index.CreateFile(index.Name())
 		key := uint64(1)
