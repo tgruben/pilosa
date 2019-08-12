@@ -73,7 +73,10 @@ func (ml *Migrater) Migrate() {
 			for _, view := range field.viewMap {
 				fmt.Println(index.Name(), field.Name(), view.name, len(view.fragments))
 				for _, fragment := range view.fragments {
-					ml.index.Begin()
+					err := ml.index.Begin()
+					if err != nil {
+						fmt.Println("BEGIN ERR", err)
+					}
 					for _, row := range fragment.rows(0) {
 						data := fragment.storage.OffsetRange(fragment.shard*ShardWidth, row*ShardWidth, (row+1)*ShardWidth)
 						data.WriteTo(writer)
@@ -97,7 +100,10 @@ func (ml *Migrater) Migrate() {
 							startingTime = now
 						}
 					}
-					ml.index.Commit()
+					err = ml.index.Commit()
+					if err != nil {
+						fmt.Println("Commit ERR", err)
+					}
 					fragment.Close()
 				}
 			}
