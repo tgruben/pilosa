@@ -1128,7 +1128,7 @@ func (b *Bitmap) writeToUnoptimized(w io.Writer) (n int64, err error) {
 // the location of their data structures.
 type roaringIterator interface {
 	// Next yields the information about the next container
-	Next() (key uint64, cType byte, n int, length int, pointer *uint16, err error)
+	Next() (key uint64, cType byte, n int, length int, pointer unsafe.Pointer, err error)
 	// Remaining yields the bytes left over past the end of the roaring data,
 	// which is typically an ops log in our case.
 	Remaining() []byte
@@ -1146,7 +1146,7 @@ type baseRoaringIterator struct {
 	currentType       byte
 	currentN          int
 	currentLen        int
-	currentPointer    *uint16
+	currentPointer    unsafe.Pointer
 	currentDataOffset uint32
 	lastDataOffset    int64
 	lastErr           error
@@ -1282,7 +1282,7 @@ func (r *baseRoaringIterator) Remaining() []byte {
 	return r.data[r.lastDataOffset:]
 }
 
-func (r *pilosaRoaringIterator) Next() (key uint64, cType byte, n int, length int, pointer *uint16, err error) {
+func (r *pilosaRoaringIterator) Next() (key uint64, cType byte, n int, length int, pointer unsafe.Pointer, err error) {
 	if r.currentIdx >= r.keys {
 		// we're already done
 		return r.Current()
@@ -1310,7 +1310,7 @@ func (r *pilosaRoaringIterator) Next() (key uint64, cType byte, n int, length in
 			r.currentIdx, r.keys, r.currentKey, r.currentDataOffset, len(r.data)))
 		return r.Current()
 	}
-	r.currentPointer = (*uint16)(unsafe.Pointer(&r.data[r.currentDataOffset]))
+	r.currentPointer = unsafe.Pointer(&r.data[r.currentDataOffset])
 	var size int
 	switch r.currentType {
 	case containerArray:
@@ -1333,7 +1333,7 @@ func (r *pilosaRoaringIterator) Next() (key uint64, cType byte, n int, length in
 	return r.Current()
 }
 
-func (r *officialRoaringIterator) Next() (key uint64, cType byte, n int, length int, pointer *uint16, err error) {
+func (r *officialRoaringIterator) Next() (key uint64, cType byte, n int, length int, pointer unsafe.Pointer, err error) {
 	if r.currentIdx >= r.keys {
 		// we're already done
 		return r.Current()
@@ -1369,7 +1369,7 @@ func (r *officialRoaringIterator) Next() (key uint64, cType byte, n int, length 
 			r.currentIdx, r.keys, r.currentKey, r.currentDataOffset, len(r.data)))
 		return r.Current()
 	}
-	r.currentPointer = (*uint16)(unsafe.Pointer(&r.data[r.currentDataOffset]))
+	r.currentPointer = unsafe.Pointer(&r.data[r.currentDataOffset])
 	var size int
 	switch r.currentType {
 	case containerArray:
@@ -1387,7 +1387,7 @@ func (r *officialRoaringIterator) Next() (key uint64, cType byte, n int, length 
 		for i := range newRuns {
 			newRuns[i].last += newRuns[i].start
 		}
-		r.currentPointer = (*uint16)(unsafe.Pointer(&newRuns[0]))
+		r.currentPointer = unsafe.Pointer(&newRuns[0])
 		r.currentLen = int(runCount)
 		size = r.currentLen * 4
 	}
@@ -1401,7 +1401,7 @@ func (r *officialRoaringIterator) Next() (key uint64, cType byte, n int, length 
 	return r.Current()
 }
 
-func (r *baseRoaringIterator) Current() (key uint64, cType byte, n int, length int, pointer *uint16, err error) {
+func (r *baseRoaringIterator) Current() (key uint64, cType byte, n int, length int, pointer unsafe.Pointer, err error) {
 	return r.currentKey, r.currentType, r.currentN, r.currentLen, r.currentPointer, r.lastErr
 }
 
@@ -1423,7 +1423,7 @@ func (b *Bitmap) RemapRoaringStorage(data []byte) (mappedAny bool, returnErr err
 	var itrKey uint64
 	var itrCType byte
 	var itrN int
-	var itrPointer *uint16
+	var itrPointer unsafe.Pointer
 	var itrErr error
 
 	if data != nil {
@@ -1497,7 +1497,7 @@ func (b *Bitmap) ImportRoaringBits(data []byte, clear bool, log bool, rowSize ui
 	var itrCType byte
 	var itrN int
 	var itrLen int
-	var itrPointer *uint16
+	var itrPointer unsafe.Pointer
 	var itrErr error
 
 	itr, err = newRoaringIterator(data)
@@ -1599,7 +1599,7 @@ func (b *Bitmap) UnmarshalBinary(data []byte) (err error) {
 	var itrCType byte
 	var itrN int
 	var itrLen int
-	var itrPointer *uint16
+	var itrPointer unsafe.Pointer
 	var itrErr error
 
 	itr, err = newRoaringIterator(data)
