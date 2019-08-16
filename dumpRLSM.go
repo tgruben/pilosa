@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/aran"
+	"github.com/tgruben/aran"
 )
 
 type AranFile struct {
