@@ -161,6 +161,38 @@ func (m *Command) Start() (err error) {
 	return nil
 }
 
+func (m *Command) UpAndDown() (err error) {
+	// Seed random number generator
+	rand.Seed(time.Now().UTC().UnixNano())
+
+	// SetupServer
+	err = m.SetupServer()
+	if err != nil {
+		return errors.Wrap(err, "setting up server")
+	}
+
+	// SetupNetworking (so we'll have profiling)
+	err = m.setupNetworking()
+	if err != nil {
+		return errors.Wrap(err, "setting up networking")
+	}
+	go func() {
+		err := m.Handler.Serve()
+		if err != nil {
+			m.logger.Printf("handler serve error: %v", err)
+		}
+	}()
+
+	// Bring the server up, and back down again.
+	if err = m.Server.UpAndDown(); err != nil {
+		return errors.Wrap(err, "bringing server up and down")
+	}
+
+	m.logger.Printf("brought up and shut down again")
+
+	return nil
+}
+
 // Wait waits for the server to be closed or interrupted.
 func (m *Command) Wait() error {
 	// First SIGKILL causes server to shut down gracefully.
@@ -285,7 +317,6 @@ func (m *Command) SetupServer() error {
 		pilosa.OptServerMetricInterval(time.Duration(m.Config.Metric.PollInterval)),
 		pilosa.OptServerDiagnosticsInterval(diagnosticsInterval),
 		pilosa.OptServerExecutorPoolSize(m.Config.WorkerPoolSize),
-
 		pilosa.OptServerLogger(m.logger),
 		pilosa.OptServerAttrStoreFunc(boltdb.NewAttrStore),
 		pilosa.OptServerSystemInfo(gopsutil.NewSystemInfo()),
@@ -315,7 +346,10 @@ func (m *Command) SetupServer() error {
 		return errors.Wrap(err, "new server")
 	}
 
-	m.API, err = pilosa.NewAPI(pilosa.OptAPIServer(m.Server))
+	m.API, err = pilosa.NewAPI(
+		pilosa.OptAPIServer(m.Server),
+		pilosa.OptAPIImportWorkerPoolSize(m.Config.ImportWorkerPoolSize),
+	)
 	if err != nil {
 		return errors.Wrap(err, "new api")
 	}
@@ -376,6 +410,7 @@ func (m *Command) Close() error {
 	eg := errgroup.Group{}
 	eg.Go(m.Handler.Close)
 	eg.Go(m.Server.Close)
+	eg.Go(m.API.Close)
 	if m.gossipMemberSet != nil {
 		eg.Go(m.gossipMemberSet.Close)
 	}
